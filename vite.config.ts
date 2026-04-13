@@ -1,24 +1,24 @@
-import { resolve } from 'node:path'
-import { defineConfig } from 'vite'
-import vue from '@vitejs/plugin-vue'
-import dts from 'vite-plugin-dts'
-import UnoCSS from 'unocss/vite'
+import { resolve } from 'node:path';
+import { defineConfig } from 'vite';
+import vue from '@vitejs/plugin-vue';
+import dts from 'vite-plugin-dts';
+import UnoCSS from 'unocss/vite';
 export default defineConfig({
   plugins: [
     vue(),
     dts({
       beforeWriteFile: (filePath, content) => {
-        const _content = content.replace(/vue-demi/g, 'vue')
+        const _content = content.replace(/vue-demi/g, 'vue');
         return {
           filePath,
-          content: _content
-        }
-      }
+          content: _content,
+        };
+      },
     }),
-    UnoCSS()
+    UnoCSS(),
   ],
   server: {
-    port: 5230
+    port: 5230,
   },
   build: {
     target: 'es2015',
@@ -26,20 +26,21 @@ export default defineConfig({
       entry: resolve(__dirname, './src/index.ts'),
       name: 'VueDraggablePlus',
       fileName: 'vue-draggable-plus',
-      formats: ['es', 'umd', 'cjs', 'iife']
+      formats: ['es', 'umd', 'cjs', 'iife'],
     },
     rollupOptions: {
-      external: ['vue'],
+      external: ['vue', 'sortablejs'],
       output: {
         globals: {
-          vue: 'Vue'
-        }
-      }
-    }
+          vue: 'Vue',
+          sortablejs: 'Sortable',
+        },
+      },
+    },
   },
   resolve: {
     alias: {
-      '@': resolve(__dirname, 'src')
-    }
-  }
-})
+      '@': resolve(__dirname, 'src'),
+    },
+  },
+});

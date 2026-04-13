@@ -1,17 +1,18 @@
-import Sortable, { type Options, type SortableEvent } from 'sortablejs'
+import Sortable, { type Options, type SortableEvent } from 'sortablejs';
 import {
   getCurrentInstance,
   isRef,
   onMounted,
   onUnmounted,
+  shallowRef,
   unref,
   nextTick,
   watch,
-  type Ref
-} from 'vue-demi'
-import type { Fn, RefOrElement, MaybeRef } from './types'
+  type Ref,
+} from 'vue-demi';
+import type { Fn, RefOrElement, MaybeRef } from './types';
 
-import { error } from './utils/log'
+import { error } from './utils/log';
 
 import {
   extend,
@@ -26,12 +27,21 @@ import {
   mergeOptionsEvents,
   moveArrayElement,
   removeElement,
-  removeNode
-} from './utils'
+  removeNode,
+} from './utils';
+
+// Mount CloneGhost, HideOnLeave, and BodyClass on SortableJS's shared plugin
+// registry. Explicit call (not a side-effect import) because the package
+// declares `sideEffects: false` for tree-shaking. Plugin behavior is opt-in
+// per sortable via matching options (`cloneGhost`, `hideOnLeave`); BodyClass
+// runs on every drag.
+import { mountDragPlugins } from './plugins';
+
+mountDragPlugins();
 
 function defaultClone<T>(element: T): T {
-  if (element === undefined || element === null) return element
-  return JSON.parse(JSON.stringify(element))
+  if (element === undefined || element === null) return element;
+  return JSON.parse(JSON.stringify(element));
 }
 
 /**
@@ -40,7 +50,7 @@ function defaultClone<T>(element: T): T {
  * @param fn
  */
 function tryOnUnmounted(fn: Fn) {
-  if (getCurrentInstance()) onUnmounted(fn)
+  if (getCurrentInstance()) onUnmounted(fn);
 }
 
 /**
@@ -49,36 +59,43 @@ function tryOnUnmounted(fn: Fn) {
  * @param fn
  */
 function tryOnMounted(fn: Fn) {
-  if (getCurrentInstance()) onMounted(fn)
-  else nextTick(fn)
+  if (getCurrentInstance()) onMounted(fn);
+  else nextTick(fn);
 }
 
-let data: any = null
-let clonedData: any = null
+let data: any = null;
+let clonedData: any = null;
+
+// Reactive mirror of the currently-dragged source data. Non-null while a
+// drag is in progress, null otherwise. Exposed to consumers via the
+// useDraggable return as `draggedData` so destination sortables can render
+// a preview from the source without needing their own shared store.
+const currentDraggedData = shallowRef<unknown>(null);
 
 function setCurrentData(
   _data: typeof data = null,
-  _clonedData: typeof data = null
+  _clonedData: typeof data = null,
 ) {
-  data = _data
-  clonedData = _clonedData
+  data = _data;
+  clonedData = _clonedData;
+  currentDraggedData.value = _clonedData;
 }
 
 function getCurrentData() {
   return {
     data,
-    clonedData
-  }
+    clonedData,
+  };
 }
 
-const CLONE_ELEMENT_KEY = Symbol('cloneElement')
+const CLONE_ELEMENT_KEY = Symbol('cloneElement');
 
 export interface DraggableEvent<T = any> extends SortableEvent {
-  item: HTMLElement & { [CLONE_ELEMENT_KEY]: any }
-  data: T
-  clonedData: T
+  item: HTMLElement & { [CLONE_ELEMENT_KEY]: any };
+  data: T;
+  clonedData: T;
 }
-type SortableMethod = 'closest' | 'save' | 'toArray' | 'destroy' | 'option'
+type SortableMethod = 'closest' | 'save' | 'toArray' | 'destroy' | 'option';
 
 export interface UseDraggableReturn extends Pick<Sortable, SortableMethod> {
   /**
@@ -86,59 +103,90 @@ export interface UseDraggableReturn extends Pick<Sortable, SortableMethod> {
    * @param {HTMLElement} target - The target element to be sorted.
    * @default By default the root element of the VueDraggablePlus instance is used
    */
-  start: (target?: HTMLElement) => void
-  pause: () => void
-  resume: () => void
+  start: (target?: HTMLElement) => void;
+  pause: () => void;
+  resume: () => void;
+  /**
+   * Reactive reference to the source data of whatever drag is currently in
+   * progress. Non-null while any sortable is actively dragging, null
+   * otherwise. Shared across all sortable instances. Useful for rendering a
+   * destination-specific preview without plumbing the source data through
+   * external shared state.
+   */
+  draggedData: Ref<unknown>;
 }
 
 export interface UseDraggableOptions<T> extends Options {
-  clone?: (element: T) => T
-  immediate?: boolean
-  customUpdate?: (event: DraggableEvent<T>) => void
+  clone?: (element: T) => T;
+  immediate?: boolean;
+  customUpdate?: (event: DraggableEvent<T>) => void;
+  /**
+   * Factory for a destination-specific drag preview. When a cross-list drag
+   * from another sortable enters this one, the dragged element's innerHTML is
+   * replaced with the result of this factory so the user sees the element as
+   * it will look once dropped (e.g. a scene card for an app dropped into a
+   * playlist). The original innerHTML is restored when the drag leaves this
+   * sortable, ends, or cancels. Return `null` to leave the default in place.
+   */
+  cloneGhost?: () => HTMLElement | string | null;
+  /**
+   * Hide the dragged element's placeholder while the cursor is outside this
+   * sortable's bounding rect. Pairs with `cloneGhost` for a symmetric feel:
+   * the destination preview appears on entry and disappears on leave, rather
+   * than lingering until drop.
+   */
+  hideOnLeave?: boolean;
   /**
    * Element dragging started
    */
-  onStart?: ((event: DraggableEvent<T>) => void) | undefined
+  onStart?: ((event: DraggableEvent<T>) => void) | undefined;
   /**
    * Element dragging ended
    */
-  onEnd?: ((event: DraggableEvent<T>) => void) | undefined
+  onEnd?: ((event: DraggableEvent<T>) => void) | undefined;
   /**
-   * Element is dropped into the list from another list
+   * Element is dropped into the list from another list.
+   *
+   * Runs BEFORE the library's default list insertion. Return `false` to
+   * cancel that insertion entirely — useful for heterogeneous cross-list
+   * drops where the consumer takes over (e.g. source is `App[]`, destination
+   * is `Scene[]`, and the real insertion happens via a server mutation).
+   * Any other return value (including `undefined`) lets the library insert
+   * the cloned source data into the destination list as normal.
    */
-  onAdd?: ((event: DraggableEvent<T>) => void) | undefined
+  onAdd?: ((event: DraggableEvent<T>) => boolean | void) | undefined;
   /**
    * Created a clone of an element
    */
-  onClone?: ((event: DraggableEvent<T>) => void) | undefined
+  onClone?: ((event: DraggableEvent<T>) => void) | undefined;
   /**
    * Element is chosen
    */
-  onChoose?: ((event: DraggableEvent<T>) => void) | undefined
+  onChoose?: ((event: DraggableEvent<T>) => void) | undefined;
   /**
    * Element is unchosen
    */
-  onUnchoose?: ((event: DraggableEvent<T>) => void) | undefined
+  onUnchoose?: ((event: DraggableEvent<T>) => void) | undefined;
   /**
    * Changed sorting within list
    */
-  onUpdate?: ((event: DraggableEvent<T>) => void) | undefined
+  onUpdate?: ((event: DraggableEvent<T>) => void) | undefined;
   /**
    * Called by any change to the list (add / update / remove)
    */
-  onSort?: ((event: DraggableEvent<T>) => void) | undefined
+  onSort?: ((event: DraggableEvent<T>) => void) | undefined;
   /**
    * Element is removed from the list into another list
    */
-  onRemove?: ((event: DraggableEvent<T>) => void) | undefined
+  onRemove?: ((event: DraggableEvent<T>) => void) | undefined;
   /**
    * Attempt to drag a filtered element
    */
-  onFilter?: ((event: DraggableEvent<T>) => void) | undefined
+  onFilter?: ((event: DraggableEvent<T>) => void) | undefined;
   /**
    * Called when dragging element changes position
    */
-  onChange?: ((evt: DraggableEvent<T>) => void) | undefined
+  onChange?: ((evt: DraggableEvent<T>) => void) | undefined;
 }
 
 /**
@@ -151,17 +199,17 @@ export interface UseDraggableOptions<T> extends Options {
 export function useDraggable<T>(
   el: RefOrElement,
   list?: Ref<T[] | undefined>,
-  options?: MaybeRef<UseDraggableOptions<T>>
-): UseDraggableReturn
+  options?: MaybeRef<UseDraggableOptions<T>>,
+): UseDraggableReturn;
 export function useDraggable<T>(
   el: null | undefined,
   list?: Ref<T[] | undefined>,
-  options?: MaybeRef<UseDraggableOptions<T>>
-): UseDraggableReturn
+  options?: MaybeRef<UseDraggableOptions<T>>,
+): UseDraggableReturn;
 export function useDraggable<T>(
   el: RefOrElement<HTMLElement | null | undefined>,
-  options?: MaybeRef<UseDraggableOptions<T>>
-): UseDraggableReturn
+  options?: MaybeRef<UseDraggableOptions<T>>,
+): UseDraggableReturn;
 
 /**
  * A custom compositionApi utils that allows you to drag and drop elements in lists.
@@ -171,53 +219,55 @@ export function useDraggable<T>(
  * @returns {UseSortableReturn}
  */
 export function useDraggable<T>(...args: any[]): UseDraggableReturn {
-  const vm = getCurrentInstance()?.proxy
-  let currentNodes: Node[] | null = null
-  const el = args[0]
-  let [, list, options] = args
+  const vm = getCurrentInstance()?.proxy;
+  let currentNodes: Node[] | null = null;
+  const el = args[0];
+  let [, list, options] = args;
 
   if (!Array.isArray(unref(list))) {
-    options = list
-    list = null
+    options = list;
+    list = null;
   }
 
-  let instance: Sortable | null = null
+  let instance: Sortable | null = null;
   const {
     immediate = true,
     clone = defaultClone,
     forceFallback,
     fallbackOnBody,
-    customUpdate
-  } = unref(options) ?? {}
+    customUpdate,
+  } = unref(options) ?? {};
 
   /**
    * Element dragging started
    * @param {DraggableEvent} evt - DraggableEvent
    */
   function onStart(evt: DraggableEvent) {
-    const { from, oldIndex, item } = evt
+    const { from, oldIndex, item } = evt;
     const nodes = Array.from(from.childNodes);
-    currentNodes = forceFallback && !fallbackOnBody ? nodes.slice(0, -1) : nodes;
-    const data = unref(unref(list)?.[oldIndex!])
-    const clonedData = clone(data)
-    setCurrentData(data, clonedData)
-    item[CLONE_ELEMENT_KEY] = clonedData
+    currentNodes =
+      forceFallback && !fallbackOnBody ? nodes.slice(0, -1) : nodes;
+    const data = unref(unref(list)?.[oldIndex!]);
+    const clonedData = clone(data);
+    setCurrentData(data, clonedData);
+    item[CLONE_ELEMENT_KEY] = clonedData;
   }
 
   /**
-   * Element is dropped into the list from another list
-   * @param {DraggableEvent} evt
+   * Element is dropped into the list from another list. Inserts the cloned
+   * source data into the destination's reactive list. Gated by the user's
+   * onAdd returning something other than `false` (see mergeOptions).
    */
   function onAdd(evt: DraggableEvent) {
-    const element = evt.item[CLONE_ELEMENT_KEY]
-    if (isUndefined(element)) return
-    removeNode(evt.item)
+    const element = evt.item[CLONE_ELEMENT_KEY];
+    if (isUndefined(element)) return;
+    removeNode(evt.item);
     if (isRef<any[]>(list)) {
-      const newList = [...unref(list)]
-      list.value = insertElement(newList, evt.newDraggableIndex!, element)
-      return
+      const newList = [...unref(list)];
+      list.value = insertElement(newList, evt.newDraggableIndex!, element);
+      return;
     }
-    insertElement(unref(list), evt.newDraggableIndex!, element)
+    insertElement(unref(list), evt.newDraggableIndex!, element);
   }
 
   /**
@@ -225,18 +275,18 @@ export function useDraggable<T>(...args: any[]): UseDraggableReturn {
    * @param {DraggableEvent} evt
    */
   function onRemove(evt: DraggableEvent) {
-    const { from, item, oldIndex, oldDraggableIndex, pullMode, clone } = evt
-    insertNodeAt(from, item, oldIndex!)
+    const { from, item, oldIndex, oldDraggableIndex, pullMode, clone } = evt;
+    insertNodeAt(from, item, oldIndex!);
     if (pullMode === 'clone') {
-      removeNode(clone)
-      return
+      removeNode(clone);
+      return;
     }
     if (isRef<any[]>(list)) {
-      const newList = [...unref(list)]
-      list.value = removeElement(newList, oldDraggableIndex!)
-      return
+      const newList = [...unref(list)];
+      list.value = removeElement(newList, oldDraggableIndex!);
+      return;
     }
-    removeElement(unref(list), oldDraggableIndex!)
+    removeElement(unref(list), oldDraggableIndex!);
   }
 
   /**
@@ -245,51 +295,51 @@ export function useDraggable<T>(...args: any[]): UseDraggableReturn {
    */
   function onUpdate(evt: DraggableEvent) {
     if (customUpdate) {
-      customUpdate(evt)
-      return
+      customUpdate(evt);
+      return;
     }
-    const { from, item, oldIndex, oldDraggableIndex, newDraggableIndex } = evt
-    removeNode(item)
-    insertNodeAt(from, item, oldIndex!)
+    const { from, item, oldIndex, oldDraggableIndex, newDraggableIndex } = evt;
+    removeNode(item);
+    insertNodeAt(from, item, oldIndex!);
     if (isRef<any[]>(list)) {
-      const newList = [...unref(list)]
+      const newList = [...unref(list)];
       list.value = moveArrayElement(
         newList,
         oldDraggableIndex!,
-        newDraggableIndex!
-      )
-      return
+        newDraggableIndex!,
+      );
+      return;
     }
-    moveArrayElement(unref(list), oldDraggableIndex!, newDraggableIndex!)
+    moveArrayElement(unref(list), oldDraggableIndex!, newDraggableIndex!);
   }
 
   function onEnd(e: DraggableEvent) {
-    const { newIndex, oldIndex, from, to } = e
-    let error: Error | null = null
-    const isSameIndex = newIndex === oldIndex && from === to
+    const { newIndex, oldIndex, from, to } = e;
+    let error: Error | null = null;
+    const isSameIndex = newIndex === oldIndex && from === to;
     try {
       //region #202
       if (isSameIndex) {
-        let oldNode: Node | null = null
+        let oldNode: Node | null = null;
         currentNodes?.some((node, index) => {
           if (oldNode && currentNodes?.length !== to.childNodes.length) {
-            from.insertBefore(oldNode, node.nextSibling)
-            return true
+            from.insertBefore(oldNode, node.nextSibling);
+            return true;
           }
-          const _node = to.childNodes[index]
-          oldNode = to?.replaceChild(node, _node)
-        })
+          const _node = to.childNodes[index];
+          oldNode = to?.replaceChild(node, _node);
+        });
       }
       //endregion
     } catch (e) {
-      error = e
+      error = e;
     } finally {
-      currentNodes = null
+      currentNodes = null;
     }
     nextTick(() => {
-      setCurrentData()
-      if (error) throw error
-    })
+      setCurrentData();
+      if (error) throw error;
+    });
   }
 
   /**
@@ -300,86 +350,121 @@ export function useDraggable<T>(...args: any[]): UseDraggableReturn {
     onStart,
     onAdd,
     onRemove,
-    onEnd
-  }
+    onEnd,
+  };
 
   function getTarget(target?: HTMLElement) {
-    const element = unref(el) as any
+    const element = unref(el) as any;
     if (!target) {
       target = isString(element)
         ? getElementBySelector(element, vm?.$el)
-        : element
+        : element;
     }
     // @ts-ignore
-    if (target && !isHTMLElement(target)) target = target.$el
+    if (target && !isHTMLElement(target)) target = target.$el;
 
-    if (!target) error('Root element not found')
-    return target
+    if (!target) error('Root element not found');
+    return target;
   }
 
   function mergeOptions() {
     // eslint-disable-next-line
-    const { immediate, clone, ...restOptions } = unref(options) ?? {}
+    const { immediate, clone, ...restOptions } = unref(options) ?? {};
 
     forEachObject(restOptions, (key, fn) => {
-      if (!isOn(key)) return
+      if (!isOn(key)) return;
       restOptions[key] = (evt: DraggableEvent, ...args: any[]) => {
-        const data = getCurrentData()
-        extend(evt, data)
-        return fn(evt, ...args)
-      }
-    })
+        const data = getCurrentData();
+        extend(evt, data);
+        return fn(evt, ...args);
+      };
+    });
 
-    return mergeOptionsEvents(
-      list === null ? {} : presetOptions,
-      restOptions
-    ) as Options
+    // Pull user's onAdd out of the default merge so we can build a single
+    // wrapper with explicit control flow:
+    //   (1) If dragEl is hidden at drop time (e.g. the HideOnLeave plugin
+    //       parked it because the cursor was outside this sortable at
+    //       release), skip the drop entirely. This is a general "dragEl is
+    //       not visibly here" policy, not specific to any plugin.
+    //   (2) User handler runs first; returning `false` cancels (3).
+    //   (3) Preset auto-insert into the reactive list.
+    const userOnAdd = restOptions.onAdd as
+      | ((evt: DraggableEvent) => boolean | void)
+      | undefined;
+    delete restOptions.onAdd;
+
+    const effectivePresets = list === null ? {} : presetOptions;
+    const merged = mergeOptionsEvents(effectivePresets, restOptions) as Options;
+
+    const presetOnAdd = (effectivePresets as UseDraggableOptions<T>).onAdd as
+      | ((evt: DraggableEvent) => void)
+      | undefined;
+
+    if (userOnAdd || presetOnAdd) {
+      merged.onAdd = function (evt: SortableEvent) {
+        if (evt.item?.style.display === 'none') {
+          return;
+        }
+        const result = userOnAdd?.call(this, evt as DraggableEvent);
+        if (result !== false) {
+          presetOnAdd?.call(this, evt as DraggableEvent);
+        }
+      };
+    }
+
+    return merged;
   }
 
   const start = (target?: HTMLElement) => {
-    target = getTarget(target)
-    if (instance) methods.destroy()
+    target = getTarget(target);
+    if (instance) methods.destroy();
 
-    instance = new Sortable(target as HTMLElement, mergeOptions())
-  }
+    instance = new Sortable(target as HTMLElement, mergeOptions());
+  };
 
   watch(
     () => options,
     () => {
-      if (!instance) return
+      if (!instance) return;
       forEachObject(mergeOptions(), (key, value) => {
         // @ts-ignore
-        instance?.option(key, value)
-      })
+        instance?.option(key, value);
+      });
     },
-    { deep: true }
-  )
+    { deep: true },
+  );
 
   const methods = {
     option: (name: keyof Options, value?: any) => {
       // @ts-ignore
-      return instance?.option(name, value)
+      return instance?.option(name, value);
     },
     destroy: () => {
-      instance?.destroy()
-      instance = null
+      instance?.destroy();
+      instance = null;
     },
     save: () => instance?.save(),
     toArray: () => instance?.toArray(),
     closest: (...args) => {
       // @ts-ignore
-      return instance?.closest(...args)
-    }
-  } as Pick<Sortable, SortableMethod>
+      return instance?.closest(...args);
+    },
+  } as Pick<Sortable, SortableMethod>;
 
-  const pause = () => methods?.option('disabled', true)
-  const resume = () => methods?.option('disabled', false)
+  const pause = () => methods?.option('disabled', true);
+  const resume = () => methods?.option('disabled', false);
 
   tryOnMounted(() => {
-    immediate && start()
-  })
+    immediate && start();
+  });
 
-  tryOnUnmounted(methods.destroy)
+  tryOnUnmounted(methods.destroy);
 
-  return { start, pause, resume, ...methods }
+  return {
+    start,
+    pause,
+    resume,
+    ...methods,
+    draggedData: currentDraggedData,
+  };
 }

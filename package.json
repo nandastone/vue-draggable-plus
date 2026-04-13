@@ -95,7 +95,9 @@
     "@types/sortablejs": "^1.15.8"
   },
   "peerDependencies": {
-    "@types/sortablejs": "^1.15.0"
+    "@types/sortablejs": "^1.15.0",
+    "sortablejs": "^1.15.0",
+    "vue": "^3.0.0"
   },
   "peerDependenciesMeta": {
     "@vue/composition-api": {

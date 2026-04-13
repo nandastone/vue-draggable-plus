@@ -4,7 +4,8 @@
 .temp
 *.log
 components.d.ts
-dist
+# dist is checked in so git-dep consumers get the built output.
+# dist
 node_modules
 coverage
 .eslintcache
