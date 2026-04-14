@@ -150,6 +150,11 @@ function pointInRect(x: number, y: number, rect: DOMRect): boolean {
 
 function installDragStateListener(): void {
   if (dragStatePointerListener) return;
+  // eslint-disable-next-line no-console
+  console.log(
+    '[dragStateTracker] listener installed, registrations:',
+    dragStateRegistrations.size,
+  );
   const listener = (evt: PointerEvent) => {
     const dragged = (Sortable as unknown as { dragged: HTMLElement | null })
       .dragged;
@@ -160,6 +165,8 @@ function installDragStateListener(): void {
         el.getBoundingClientRect(),
       );
       if (isDragOver.value !== inside) {
+        // eslint-disable-next-line no-console
+        console.log('[dragStateTracker]', el, '→', inside);
         isDragOver.value = inside;
         // Only the sortable currently owning dragEl participates in the
         // hideOnLeave display toggle, and only if it opted in.
