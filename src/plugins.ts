@@ -207,6 +207,11 @@ export function registerDragStateInstance(
   getOptions: () => { hideOnLeave?: boolean } | undefined,
 ): { dispose: () => void } {
   dragStateRegistrations.set(el, { isDragOver, getOptions });
+  // eslint-disable-next-line no-console
+  console.log('[dragStateTracker] registered', el, 'ref object:', isDragOver);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as unknown as { __isDragOverFromFork: unknown }).__isDragOverFromFork =
+    isDragOver;
   return {
     dispose: () => {
       dragStateRegistrations.delete(el);
