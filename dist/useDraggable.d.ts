@@ -22,9 +22,20 @@ export interface UseDraggableReturn extends Pick<Sortable, SortableMethod> {
     /**
      * Reactive reference to the source data of whatever drag is currently in
      * progress. Non-null while any sortable is actively dragging, null
-     * otherwise. Shared across all sortable instances.
+     * otherwise. Shared across all sortable instances. Useful for rendering a
+     * destination-specific preview without plumbing the source data through
+     * external shared state.
      */
     draggedData: Ref<unknown>;
+    /**
+     * Reactive reference to whether the cursor is currently within this
+     * sortable's bounding rect during a drag. Resets to false when the drag
+     * ends. Useful for destination-specific UI that should only appear while
+     * the user is actively aiming at this list — e.g. an empty-state drop
+     * zone overlay hidden on hover, distinct from the global
+     * `body.sortable-dragging` state.
+     */
+    isDragOver: Ref<boolean>;
 }
 export interface UseDraggableOptions<T> extends Options {
     clone?: (element: T) => T;
@@ -32,19 +43,18 @@ export interface UseDraggableOptions<T> extends Options {
     customUpdate?: (event: DraggableEvent<T>) => void;
     /**
      * Factory for a destination-specific drag preview. When a cross-list drag
-     * from another sortable enters this one, the dragged element's innerHTML
-     * is replaced with the result of this factory so the user sees the
-     * element as it will look once dropped (e.g. a scene card for an app
-     * dropped into a playlist). The original innerHTML is restored when the
-     * drag leaves this sortable, ends, or cancels. Return `null` to leave
-     * the default in place.
+     * from another sortable enters this one, the dragged element's innerHTML is
+     * replaced with the result of this factory so the user sees the element as
+     * it will look once dropped (e.g. a scene card for an app dropped into a
+     * playlist). The original innerHTML is restored when the drag leaves this
+     * sortable, ends, or cancels. Return `null` to leave the default in place.
      */
     cloneGhost?: () => HTMLElement | string | null;
     /**
      * Hide the dragged element's placeholder while the cursor is outside this
      * sortable's bounding rect. Pairs with `cloneGhost` for a symmetric feel:
-     * the destination preview appears on entry and disappears on leave,
-     * rather than lingering until drop.
+     * the destination preview appears on entry and disappears on leave, rather
+     * than lingering until drop.
      */
     hideOnLeave?: boolean;
     /**

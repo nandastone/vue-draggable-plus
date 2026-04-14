@@ -30,12 +30,16 @@ import {
   removeNode,
 } from './utils';
 
-// Mount CloneGhost, HideOnLeave, and BodyClass on SortableJS's shared plugin
-// registry. Explicit call (not a side-effect import) because the package
-// declares `sideEffects: false` for tree-shaking. Plugin behavior is opt-in
-// per sortable via matching options (`cloneGhost`, `hideOnLeave`); BodyClass
-// runs on every drag.
-import { mountDragPlugins } from './plugins';
+// Mount CloneGhost, DragStateTracker, and BodyClass on SortableJS's shared
+// plugin registry. Explicit call (not a side-effect import) because the
+// package declares `sideEffects: false` for tree-shaking. Plugin behavior is
+// opt-in per sortable via matching options (`cloneGhost`, `hideOnLeave`);
+// BodyClass and DragStateTracker run on every drag.
+import {
+  createDragStateRef,
+  mountDragPlugins,
+  registerDragStateInstance,
+} from './plugins';
 
 mountDragPlugins();
 
@@ -114,6 +118,15 @@ export interface UseDraggableReturn extends Pick<Sortable, SortableMethod> {
    * external shared state.
    */
   draggedData: Ref<unknown>;
+  /**
+   * Reactive reference to whether the cursor is currently within this
+   * sortable's bounding rect during a drag. Resets to false when the drag
+   * ends. Useful for destination-specific UI that should only appear while
+   * the user is actively aiming at this list — e.g. an empty-state drop
+   * zone overlay hidden on hover, distinct from the global
+   * `body.sortable-dragging` state.
+   */
+  isDragOver: Ref<boolean>;
 }
 
 export interface UseDraggableOptions<T> extends Options {
@@ -230,6 +243,12 @@ export function useDraggable<T>(...args: any[]): UseDraggableReturn {
   }
 
   let instance: Sortable | null = null;
+  // DragStateTracker registration is paired with `instance`: created on
+  // start, disposed on destroy. The `isDragOver` ref itself outlives any
+  // given Sortable instance so consumers can read it before start() runs
+  // (e.g. when `immediate: false`) and across re-starts.
+  let dragStateDispose: (() => void) | null = null;
+  const isDragOver = createDragStateRef();
   const {
     immediate = true,
     clone = defaultClone,
@@ -420,6 +439,12 @@ export function useDraggable<T>(...args: any[]): UseDraggableReturn {
     if (instance) methods.destroy();
 
     instance = new Sortable(target as HTMLElement, mergeOptions());
+    const registration = registerDragStateInstance(
+      target as HTMLElement,
+      isDragOver,
+      () => unref(options),
+    );
+    dragStateDispose = registration.dispose;
   };
 
   watch(
@@ -440,6 +465,8 @@ export function useDraggable<T>(...args: any[]): UseDraggableReturn {
       return instance?.option(name, value);
     },
     destroy: () => {
+      dragStateDispose?.();
+      dragStateDispose = null;
       instance?.destroy();
       instance = null;
     },
@@ -466,5 +493,6 @@ export function useDraggable<T>(...args: any[]): UseDraggableReturn {
     resume,
     ...methods,
     draggedData: currentDraggedData,
+    isDragOver,
   };
 }
