@@ -30,16 +30,7 @@ import {
   removeNode,
 } from './utils';
 
-// Mount CloneGhost, DragStateTracker, and BodyClass on SortableJS's shared
-// plugin registry. Explicit call (not a side-effect import) because the
-// package declares `sideEffects: false` for tree-shaking. Plugin behavior is
-// opt-in per sortable via matching options (`cloneGhost`, `hideOnLeave`);
-// BodyClass and DragStateTracker run on every drag.
-import {
-  createDragStateRef,
-  mountDragPlugins,
-  registerDragStateInstance,
-} from './plugins';
+import { mountDragPlugins, registerDragStateInstance } from './plugins';
 
 mountDragPlugins();
 
@@ -243,12 +234,10 @@ export function useDraggable<T>(...args: any[]): UseDraggableReturn {
   }
 
   let instance: Sortable | null = null;
-  // DragStateTracker registration is paired with `instance`: created on
-  // start, disposed on destroy. The `isDragOver` ref itself outlives any
-  // given Sortable instance so consumers can read it before start() runs
-  // (e.g. when `immediate: false`) and across re-starts.
+  // The ref outlives any given Sortable instance so consumers can read it
+  // before start() runs (e.g. `immediate: false`) and across re-starts.
   let dragStateDispose: (() => void) | null = null;
-  const isDragOver = createDragStateRef();
+  const isDragOver = shallowRef(false);
   const {
     immediate = true,
     clone = defaultClone,
@@ -439,12 +428,11 @@ export function useDraggable<T>(...args: any[]): UseDraggableReturn {
     if (instance) methods.destroy();
 
     instance = new Sortable(target as HTMLElement, mergeOptions());
-    const registration = registerDragStateInstance(
+    dragStateDispose = registerDragStateInstance(
       target as HTMLElement,
       isDragOver,
       () => unref(options),
     );
-    dragStateDispose = registration.dispose;
   };
 
   watch(

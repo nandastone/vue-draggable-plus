@@ -1,5 +1,5 @@
 import Sortable from 'sortablejs';
-import { shallowRef, type Ref } from 'vue-demi';
+import { type Ref } from 'vue-demi';
 
 // SortableJS plugins that implement three drag UX concerns in a
 // framework-agnostic way, mounted once at module load. Consumers opt in per
@@ -119,21 +119,11 @@ CloneGhostPlugin.prototype = {
 // ---------------------------------------------------------------------------
 // DragStateTracker
 //
-// Maintains a per-sortable `isDragOver` ref that reflects whether the cursor
-// is currently within that sortable's bounding rect during a drag. One global
-// pointermove listener is installed on drag start and torn down on nulling;
-// it iterates all registered sortables and updates their refs in place.
-//
-// `hideOnLeave` is implemented as an opt-in behavior on the same pass: when
-// the sortable that owns dragEl has `hideOnLeave: true`, the listener toggles
-// `dragEl.style.display` based on the same inside/outside check. This keeps
-// both features driven by a single listener and a single rect evaluation per
-// instance per pointermove.
-//
-// Registration is driven from useDraggable (see `registerDragStateInstance`)
-// rather than from SortableJS's plugin lifecycle because the tracker needs
-// to iterate ALL sortables on every pointermove, not just the one owning
-// dragEl — a plugin instance only sees its own sortable.
+// Per-sortable `isDragOver` ref plus opt-in `hideOnLeave` display toggle,
+// both driven from a single pointermove listener and a single rect check
+// per instance. Registration is driven from useDraggable rather than from
+// SortableJS's plugin lifecycle because the tracker needs to iterate all
+// sortables on every pointermove — a plugin instance only sees its own.
 // ---------------------------------------------------------------------------
 
 interface DragStateRegistration {
@@ -151,8 +141,7 @@ function pointInRect(x: number, y: number, rect: DOMRect): boolean {
 function installDragStateListener(): void {
   if (dragStatePointerListener) return;
   const listener = (evt: PointerEvent) => {
-    const dragged = (Sortable as unknown as { dragged: HTMLElement | null })
-      .dragged;
+    const dragged = getDraggedEl();
     dragStateRegistrations.forEach(({ isDragOver, getOptions }, el) => {
       const inside = pointInRect(
         evt.clientX,
@@ -191,24 +180,17 @@ function resetAllDragStateRefs(): void {
   });
 }
 
-// Registers a sortable element with the tracker so its `isDragOver` ref is
-// updated during drags. Returned from useDraggable on each successful start
-// and disposed on destroy.
+// Registers a sortable with the tracker so its `isDragOver` ref is updated
+// during drags. Returns a dispose fn; call from useDraggable's destroy.
 export function registerDragStateInstance(
   el: HTMLElement,
   isDragOver: Ref<boolean>,
   getOptions: () => { hideOnLeave?: boolean } | undefined,
-): { dispose: () => void } {
+): () => void {
   dragStateRegistrations.set(el, { isDragOver, getOptions });
-  return {
-    dispose: () => {
-      dragStateRegistrations.delete(el);
-    },
+  return () => {
+    dragStateRegistrations.delete(el);
   };
-}
-
-export function createDragStateRef(): Ref<boolean> {
-  return shallowRef(false);
 }
 
 function DragStateTrackerPlugin(this: unknown) {}
@@ -221,8 +203,7 @@ DragStateTrackerPlugin.prototype = {
     resetAllDragStateRefs();
     // Clear any lingering display:none from hideOnLeave so dragEl is visible
     // to SortableJS's own drop/revert logic.
-    const dragged = (Sortable as unknown as { dragged: HTMLElement | null })
-      .dragged;
+    const dragged = getDraggedEl();
     if (dragged && dragged.style.display === 'none') {
       dragged.style.display = '';
     }
