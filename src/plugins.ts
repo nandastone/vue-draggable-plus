@@ -74,12 +74,18 @@ function applyCloneGhost(
   el[CLONE_GHOST_ORIGINAL_WIDTH] = el.style.width;
   el[CLONE_GHOST_ORIGINAL_HEIGHT] = el.style.height;
   el.innerHTML = typeof preview === 'string' ? preview : preview.innerHTML;
-  // Let the preview dictate outer size. For dragEl (natural sizing) this is
-  // a no-op; for Sortable.ghost, SortableJS locks width/height inline to the
-  // source item's rect — clearing them lets the preview render at its own
-  // dimensions so the cursor-follower morphs into the destination's card.
-  el.style.width = '';
-  el.style.height = '';
+  // Match the preview's measured box so the cursor-follower and placeholder
+  // morph to the destination's card dimensions instead of the source item's.
+  // Consumers that need a specific size should style the preview element at
+  // that size before returning it. String previews fall back to auto sizing.
+  if (preview instanceof HTMLElement) {
+    const rect = preview.getBoundingClientRect();
+    el.style.width = `${rect.width}px`;
+    el.style.height = `${rect.height}px`;
+  } else {
+    el.style.width = '';
+    el.style.height = '';
+  }
   el[CLONE_GHOST_APPLIED_BY] = appliedBy;
 }
 
