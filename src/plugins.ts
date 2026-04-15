@@ -29,6 +29,7 @@ const CLONE_GHOST_ORIGINAL_HTML = Symbol('cloneGhostOriginalHtml');
 const CLONE_GHOST_ORIGINAL_WIDTH = Symbol('cloneGhostOriginalWidth');
 const CLONE_GHOST_ORIGINAL_HEIGHT = Symbol('cloneGhostOriginalHeight');
 const CLONE_GHOST_APPLIED_BY = Symbol('cloneGhostAppliedBy');
+const CLONE_GHOST_STICKY = Symbol('cloneGhostSticky');
 
 type CloneGhostFactory = () => HTMLElement | string | null;
 
@@ -37,6 +38,7 @@ type CloneGhostEl = HTMLElement & {
   [CLONE_GHOST_ORIGINAL_WIDTH]?: string;
   [CLONE_GHOST_ORIGINAL_HEIGHT]?: string;
   [CLONE_GHOST_APPLIED_BY]?: HTMLElement;
+  [CLONE_GHOST_STICKY]?: boolean;
 };
 
 function getDraggedEl(): CloneGhostEl | null {
@@ -49,8 +51,11 @@ function getGhostEl(): CloneGhostEl | null {
     .ghost as CloneGhostEl | null;
 }
 
-function restoreCloneGhost(el: CloneGhostEl | null): void {
+// When `force` is true the sticky guard is ignored — used on drop/nulling so
+// end-of-drag cleanup always wins.
+function restoreCloneGhost(el: CloneGhostEl | null, force = false): void {
   if (!el || !el[CLONE_GHOST_APPLIED_BY]) return;
+  if (!force && el[CLONE_GHOST_STICKY]) return;
   const html = el[CLONE_GHOST_ORIGINAL_HTML];
   if (typeof html === 'string') el.innerHTML = html;
   const width = el[CLONE_GHOST_ORIGINAL_WIDTH];
@@ -61,12 +66,14 @@ function restoreCloneGhost(el: CloneGhostEl | null): void {
   el[CLONE_GHOST_ORIGINAL_WIDTH] = undefined;
   el[CLONE_GHOST_ORIGINAL_HEIGHT] = undefined;
   el[CLONE_GHOST_APPLIED_BY] = undefined;
+  el[CLONE_GHOST_STICKY] = undefined;
 }
 
 function applyCloneGhost(
   el: CloneGhostEl,
   factory: CloneGhostFactory,
   appliedBy: HTMLElement,
+  sticky = false,
 ): void {
   const preview = factory();
   if (!preview) return;
@@ -87,22 +94,24 @@ function applyCloneGhost(
     el.style.height = '';
   }
   el[CLONE_GHOST_APPLIED_BY] = appliedBy;
+  el[CLONE_GHOST_STICKY] = sticky;
 }
 
 function applyIfFresh(
   el: CloneGhostEl | null,
   factory: CloneGhostFactory,
   appliedBy: HTMLElement,
+  sticky = false,
 ): void {
   if (!el) return;
   if (el[CLONE_GHOST_APPLIED_BY] === appliedBy) return;
-  if (el[CLONE_GHOST_APPLIED_BY]) restoreCloneGhost(el);
-  applyCloneGhost(el, factory, appliedBy);
+  if (el[CLONE_GHOST_APPLIED_BY]) restoreCloneGhost(el, true);
+  applyCloneGhost(el, factory, appliedBy, sticky);
 }
 
-function restoreAll(): void {
-  restoreCloneGhost(getDraggedEl());
-  restoreCloneGhost(getGhostEl());
+function restoreAll(force = false): void {
+  restoreCloneGhost(getDraggedEl(), force);
+  restoreCloneGhost(getGhostEl(), force);
 }
 
 // Non-global hooks only fire on sortables where `options[pluginName]` is set;
@@ -115,6 +124,23 @@ function restoreAll(): void {
 // non-global variants on a source that doesn't declare `cloneGhost`.
 function CloneGhostPlugin(this: unknown) {}
 CloneGhostPlugin.prototype = {
+  // With `cloneGhostOnStart`, apply the destination's preview to
+  // Sortable.ghost at drag start so the cursor-follower reflects the drop
+  // target from the first pixel of movement. Only applied to the ghost (not
+  // dragEl) because dragEl is still in the source at this point and
+  // swapping it would mutate the source item's visible markup. The apply is
+  // marked sticky so `dragOverGlobal(isOwner)` and `revertGlobal` don't
+  // restore it when the cursor passes back over the source.
+  dragStartGlobal(args: PluginArgs) {
+    const opts = args.sortable.options as {
+      cloneGhost?: CloneGhostFactory;
+      cloneGhostOnStart?: boolean;
+    };
+    if (!opts.cloneGhost || !opts.cloneGhostOnStart) return;
+    const active = (Sortable as unknown as { active: Sortable | null }).active;
+    if (active?.el === args.sortable.el) return;
+    applyIfFresh(getGhostEl(), opts.cloneGhost, args.sortable.el, true);
+  },
   dragOverValid(args: PluginArgs) {
     if (args.isOwner) return;
     const factory = (
@@ -142,10 +168,10 @@ CloneGhostPlugin.prototype = {
     }
   },
   dropGlobal() {
-    restoreAll();
+    restoreAll(true);
   },
   nullingGlobal() {
-    restoreAll();
+    restoreAll(true);
   },
 };
 (CloneGhostPlugin as unknown as { pluginName: string }).pluginName =
