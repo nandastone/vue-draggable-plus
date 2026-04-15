@@ -150,11 +150,15 @@ function installDragStateListener(): void {
       );
       if (isDragOver.value !== inside) {
         isDragOver.value = inside;
-        // Only the sortable currently owning dragEl participates in the
-        // hideOnLeave display toggle, and only if it opted in.
+        // hideOnLeave only hides drags that originated in another sortable.
+        // An in-list reorder exiting its own rect must stay visible, otherwise
+        // the item blinks out while the user is mid-reorder.
+        const active = (Sortable as unknown as { active: Sortable | null })
+          .active;
         if (
           dragged &&
           dragged.parentNode === el &&
+          active?.el !== el &&
           getOptions()?.hideOnLeave
         ) {
           dragged.style.display = inside ? '' : 'none';
