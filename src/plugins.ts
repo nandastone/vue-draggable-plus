@@ -26,40 +26,77 @@ interface PluginArgs {
 // ---------------------------------------------------------------------------
 
 const CLONE_GHOST_ORIGINAL_HTML = Symbol('cloneGhostOriginalHtml');
+const CLONE_GHOST_ORIGINAL_WIDTH = Symbol('cloneGhostOriginalWidth');
+const CLONE_GHOST_ORIGINAL_HEIGHT = Symbol('cloneGhostOriginalHeight');
 const CLONE_GHOST_APPLIED_BY = Symbol('cloneGhostAppliedBy');
 
 type CloneGhostFactory = () => HTMLElement | string | null;
 
-type CloneGhostDragEl = HTMLElement & {
+type CloneGhostEl = HTMLElement & {
   [CLONE_GHOST_ORIGINAL_HTML]?: string;
+  [CLONE_GHOST_ORIGINAL_WIDTH]?: string;
+  [CLONE_GHOST_ORIGINAL_HEIGHT]?: string;
   [CLONE_GHOST_APPLIED_BY]?: HTMLElement;
 };
 
-function getDraggedEl(): CloneGhostDragEl | null {
+function getDraggedEl(): CloneGhostEl | null {
   return (Sortable as unknown as { dragged: HTMLElement | null })
-    .dragged as CloneGhostDragEl | null;
+    .dragged as CloneGhostEl | null;
 }
 
-function restoreCloneGhost(el: CloneGhostDragEl | null): void {
+function getGhostEl(): CloneGhostEl | null {
+  return (Sortable as unknown as { ghost: HTMLElement | null })
+    .ghost as CloneGhostEl | null;
+}
+
+function restoreCloneGhost(el: CloneGhostEl | null): void {
   if (!el || !el[CLONE_GHOST_APPLIED_BY]) return;
-  const original = el[CLONE_GHOST_ORIGINAL_HTML];
-  if (typeof original === 'string') {
-    el.innerHTML = original;
-  }
+  const html = el[CLONE_GHOST_ORIGINAL_HTML];
+  if (typeof html === 'string') el.innerHTML = html;
+  const width = el[CLONE_GHOST_ORIGINAL_WIDTH];
+  if (typeof width === 'string') el.style.width = width;
+  const height = el[CLONE_GHOST_ORIGINAL_HEIGHT];
+  if (typeof height === 'string') el.style.height = height;
   el[CLONE_GHOST_ORIGINAL_HTML] = undefined;
+  el[CLONE_GHOST_ORIGINAL_WIDTH] = undefined;
+  el[CLONE_GHOST_ORIGINAL_HEIGHT] = undefined;
   el[CLONE_GHOST_APPLIED_BY] = undefined;
 }
 
 function applyCloneGhost(
-  el: CloneGhostDragEl,
+  el: CloneGhostEl,
   factory: CloneGhostFactory,
   appliedBy: HTMLElement,
 ): void {
   const preview = factory();
   if (!preview) return;
   el[CLONE_GHOST_ORIGINAL_HTML] = el.innerHTML;
+  el[CLONE_GHOST_ORIGINAL_WIDTH] = el.style.width;
+  el[CLONE_GHOST_ORIGINAL_HEIGHT] = el.style.height;
   el.innerHTML = typeof preview === 'string' ? preview : preview.innerHTML;
+  // Let the preview dictate outer size. For dragEl (natural sizing) this is
+  // a no-op; for Sortable.ghost, SortableJS locks width/height inline to the
+  // source item's rect — clearing them lets the preview render at its own
+  // dimensions so the cursor-follower morphs into the destination's card.
+  el.style.width = '';
+  el.style.height = '';
   el[CLONE_GHOST_APPLIED_BY] = appliedBy;
+}
+
+function applyIfFresh(
+  el: CloneGhostEl | null,
+  factory: CloneGhostFactory,
+  appliedBy: HTMLElement,
+): void {
+  if (!el) return;
+  if (el[CLONE_GHOST_APPLIED_BY] === appliedBy) return;
+  if (el[CLONE_GHOST_APPLIED_BY]) restoreCloneGhost(el);
+  applyCloneGhost(el, factory, appliedBy);
+}
+
+function restoreAll(): void {
+  restoreCloneGhost(getDraggedEl());
+  restoreCloneGhost(getGhostEl());
 }
 
 // Non-global hooks only fire on sortables where `options[pluginName]` is set;
@@ -78,17 +115,12 @@ CloneGhostPlugin.prototype = {
       args.sortable.options as { cloneGhost?: CloneGhostFactory }
     ).cloneGhost;
     if (!factory) return;
-    const dragged = getDraggedEl();
-    if (!dragged) return;
-    if (dragged[CLONE_GHOST_APPLIED_BY] === args.sortable.el) return;
-    if (dragged[CLONE_GHOST_APPLIED_BY]) {
-      restoreCloneGhost(dragged);
-    }
-    applyCloneGhost(dragged, factory, args.sortable.el);
+    applyIfFresh(getDraggedEl(), factory, args.sortable.el);
+    applyIfFresh(getGhostEl(), factory, args.sortable.el);
   },
   dragOverGlobal(args: PluginArgs) {
     if (!args.isOwner) return;
-    restoreCloneGhost(getDraggedEl());
+    restoreAll();
   },
   // WORKAROUND (unpatched sortablejs): SortableJS ignores `put: false` on
   // the revert-to-origin path (_onDragOver ~line 1748), so dragEl can be
@@ -98,16 +130,16 @@ CloneGhostPlugin.prototype = {
   // Upstream PR: https://github.com/SortableJS/Sortable/pull/2465
   revertGlobal() {
     const dragged = getDraggedEl();
-    restoreCloneGhost(dragged);
+    restoreAll();
     if (dragged && dragged.style.display === 'none') {
       dragged.style.display = '';
     }
   },
   dropGlobal() {
-    restoreCloneGhost(getDraggedEl());
+    restoreAll();
   },
   nullingGlobal() {
-    restoreCloneGhost(getDraggedEl());
+    restoreAll();
   },
 };
 (CloneGhostPlugin as unknown as { pluginName: string }).pluginName =
