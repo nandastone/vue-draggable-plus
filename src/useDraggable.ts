@@ -273,11 +273,11 @@ export function useDraggable<T>(...args: any[]): UseDraggableReturn {
     const clonedData = clone(data);
     setCurrentData(data, clonedData);
     item[CLONE_ELEMENT_KEY] = clonedData;
-    // Runs inside SortableJS's 'start' event dispatch, after _appendGhost
-    // has created Sortable.ghost. Broadcasts to registered destinations so
-    // their cloneGhost preview is applied to the cursor-follower from the
-    // first pixel of movement.
-    triggerCloneGhostOnStart(from);
+    // Deferred so destinations whose preview element is gated on
+    // `draggedData` (e.g. `v-if="previewScene"`) render before we read their
+    // ref. Runs after SortableJS's 'start' event dispatch, so
+    // Sortable.ghost already exists.
+    nextTick(() => triggerCloneGhostOnStart(from));
   }
 
   /**
