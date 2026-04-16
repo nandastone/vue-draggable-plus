@@ -174,8 +174,18 @@ export function triggerCloneGhostOnStart(sourceEl: HTMLElement): void {
   // hadn't flushed in time), leave the ghost hidden until dragOverValid
   // applies cloneGhost when the cursor enters a destination, or until
   // nullingGlobal cleans up on drag end.
-  if (applied) clearBodyCloneGhostPending();
+  if (applied) {
+    cloneGhostOnStartHasApplied = true;
+    clearBodyCloneGhostPending();
+  }
 }
+
+// Tracks whether cloneGhostOnStart successfully applied a preview during
+// this drag. While true, dragOverGlobal's "snap back to source" restore is
+// suppressed: the cloneGhostOnStart contract is "show this preview from
+// drag start," so the ghost must stay morphed even when the cursor is over
+// the source list. Reset on nullingGlobal.
+let cloneGhostOnStartHasApplied = false;
 
 function disconnectCloneGhostOnStartObservers(): void {
   cloneGhostOnStartRegistrations.forEach((entry) => {
@@ -258,6 +268,10 @@ CloneGhostPlugin.prototype = {
   },
   dragOverGlobal(args: PluginArgs) {
     if (!args.isOwner) return;
+    // Suppress the snap-back when cloneGhostOnStart applied a preview: the
+    // ghost is meant to stay morphed for the whole drag, including while the
+    // cursor is over the source list.
+    if (cloneGhostOnStartHasApplied) return;
     restoreAll();
   },
   // WORKAROUND (unpatched sortablejs): SortableJS ignores `put: false` on
@@ -280,6 +294,7 @@ CloneGhostPlugin.prototype = {
     restoreAll();
     disconnectCloneGhostOnStartObservers();
     clearBodyCloneGhostPending();
+    cloneGhostOnStartHasApplied = false;
   },
 };
 (CloneGhostPlugin as unknown as { pluginName: string }).pluginName =
