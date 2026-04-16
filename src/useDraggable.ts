@@ -30,7 +30,12 @@ import {
   removeNode,
 } from './utils';
 
-import { mountDragPlugins, registerDragStateInstance } from './plugins';
+import {
+  mountDragPlugins,
+  registerCloneGhostOnStart,
+  registerDragStateInstance,
+  triggerCloneGhostOnStart,
+} from './plugins';
 
 mountDragPlugins();
 
@@ -133,6 +138,14 @@ export interface UseDraggableOptions<T> extends Options {
    * sortable, ends, or cancels. Return `null` to leave the default in place.
    */
   cloneGhost?: () => HTMLElement | string | null;
+  /**
+   * Apply the `cloneGhost` preview to the cursor-follower from drag start,
+   * not just when the cursor enters this sortable. The library mirrors the
+   * preview's DOM onto the ghost for the duration of the drag, so an
+   * async-resolved preview (e.g. one with a loading placeholder) updates
+   * without waiting for the cursor to enter.
+   */
+  cloneGhostOnStart?: boolean;
   /**
    * Hide the dragged element's placeholder while the cursor is outside this
    * sortable's bounding rect. Pairs with `cloneGhost` for a symmetric feel:
@@ -237,6 +250,7 @@ export function useDraggable<T>(...args: any[]): UseDraggableReturn {
   // The ref outlives any given Sortable instance so consumers can read it
   // before start() runs (e.g. `immediate: false`) and across re-starts.
   let dragStateDispose: (() => void) | null = null;
+  let cloneGhostOnStartDispose: (() => void) | null = null;
   const isDragOver = shallowRef(false);
   const {
     immediate = true,
@@ -259,6 +273,11 @@ export function useDraggable<T>(...args: any[]): UseDraggableReturn {
     const clonedData = clone(data);
     setCurrentData(data, clonedData);
     item[CLONE_ELEMENT_KEY] = clonedData;
+    // Runs inside SortableJS's 'start' event dispatch, after _appendGhost
+    // has created Sortable.ghost. Broadcasts to registered destinations so
+    // their cloneGhost preview is applied to the cursor-follower from the
+    // first pixel of movement.
+    triggerCloneGhostOnStart(from);
   }
 
   /**
@@ -433,6 +452,13 @@ export function useDraggable<T>(...args: any[]): UseDraggableReturn {
       isDragOver,
       () => unref(options),
     );
+    const opts = unref(options);
+    if (opts?.cloneGhost && opts.cloneGhostOnStart) {
+      cloneGhostOnStartDispose = registerCloneGhostOnStart(
+        target as HTMLElement,
+        opts.cloneGhost,
+      );
+    }
   };
 
   watch(
@@ -455,6 +481,8 @@ export function useDraggable<T>(...args: any[]): UseDraggableReturn {
     destroy: () => {
       dragStateDispose?.();
       dragStateDispose = null;
+      cloneGhostOnStartDispose?.();
+      cloneGhostOnStartDispose = null;
       instance?.destroy();
       instance = null;
     },

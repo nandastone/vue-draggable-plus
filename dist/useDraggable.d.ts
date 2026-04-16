@@ -51,6 +51,14 @@ export interface UseDraggableOptions<T> extends Options {
      */
     cloneGhost?: () => HTMLElement | string | null;
     /**
+     * Apply the `cloneGhost` preview to the cursor-follower from drag start,
+     * not just when the cursor enters this sortable. The library mirrors the
+     * preview's DOM onto the ghost for the duration of the drag, so an
+     * async-resolved preview (e.g. one with a loading placeholder) updates
+     * without waiting for the cursor to enter.
+     */
+    cloneGhostOnStart?: boolean;
+    /**
      * Hide the dragged element's placeholder while the cursor is outside this
      * sortable's bounding rect. Pairs with `cloneGhost` for a symmetric feel:
      * the destination preview appears on entry and disappears on leave, rather

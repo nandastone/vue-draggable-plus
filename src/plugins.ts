@@ -105,6 +105,60 @@ function restoreAll(): void {
   restoreCloneGhost(getGhostEl());
 }
 
+// ---------------------------------------------------------------------------
+// CloneGhostOnStart
+//
+// Destinations that opt in with `cloneGhostOnStart: true` register their
+// preview factory here. The source sortable's merged `onStart` calls
+// triggerCloneGhostOnStart once Sortable.ghost exists, which applies each
+// registered preview to the cursor-follower. A MutationObserver mirrors
+// subsequent preview DOM changes (e.g. async component resolution) onto the
+// ghost so the consumer doesn't have to wait for dragOverValid to refresh.
+//
+// Registration is driven from useDraggable rather than from a plugin hook
+// because SortableJS's `dragStart` plugin events fire before `_appendGhost`,
+// and the user-facing `onStart` callback fires on the source only, so the
+// fork has to broadcast to destinations from there.
+// ---------------------------------------------------------------------------
+
+const cloneGhostOnStartRegistrations = new Map<HTMLElement, CloneGhostFactory>();
+const cloneGhostOnStartObservers = new Map<HTMLElement, MutationObserver>();
+
+export function registerCloneGhostOnStart(
+  el: HTMLElement,
+  factory: CloneGhostFactory,
+): () => void {
+  cloneGhostOnStartRegistrations.set(el, factory);
+  return () => {
+    cloneGhostOnStartRegistrations.delete(el);
+  };
+}
+
+export function triggerCloneGhostOnStart(sourceEl: HTMLElement): void {
+  const ghost = getGhostEl();
+  if (!ghost) return;
+  cloneGhostOnStartRegistrations.forEach((factory, destEl) => {
+    if (destEl === sourceEl) return;
+    const preview = factory();
+    if (!preview) return;
+    applyIfFresh(ghost, () => preview, destEl);
+    if (!(preview instanceof HTMLElement)) return;
+    const observer = new MutationObserver(() => {
+      ghost.innerHTML = preview.innerHTML;
+      const rect = preview.getBoundingClientRect();
+      ghost.style.width = `${rect.width}px`;
+      ghost.style.height = `${rect.height}px`;
+    });
+    observer.observe(preview, { childList: true, subtree: true });
+    cloneGhostOnStartObservers.set(destEl, observer);
+  });
+}
+
+function disconnectCloneGhostOnStartObservers(): void {
+  cloneGhostOnStartObservers.forEach((o) => o.disconnect());
+  cloneGhostOnStartObservers.clear();
+}
+
 // Non-global hooks only fire on sortables where `options[pluginName]` is set;
 // global hooks fire on every sortable the plugin is initialized on (all of
 // them, via `initializeByDefault`). The apply path uses non-global
@@ -146,6 +200,7 @@ CloneGhostPlugin.prototype = {
   },
   nullingGlobal() {
     restoreAll();
+    disconnectCloneGhostOnStartObservers();
   },
 };
 (CloneGhostPlugin as unknown as { pluginName: string }).pluginName =
