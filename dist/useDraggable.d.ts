@@ -31,7 +31,7 @@ export interface UseDraggableReturn extends Pick<Sortable, SortableMethod> {
      * Reactive reference to whether the cursor is currently within this
      * sortable's bounding rect during a drag. Resets to false when the drag
      * ends. Useful for destination-specific UI that should only appear while
-     * the user is actively aiming at this list — e.g. an empty-state drop
+     * the user is actively aiming at this list, e.g. an empty-state drop
      * zone overlay hidden on hover, distinct from the global
      * `body.sortable-dragging` state.
      */
@@ -77,7 +77,7 @@ export interface UseDraggableOptions<T> extends Options {
      * Element is dropped into the list from another list.
      *
      * Runs BEFORE the library's default list insertion. Return `false` to
-     * cancel that insertion entirely — useful for heterogeneous cross-list
+     * cancel that insertion entirely. Useful for heterogeneous cross-list
      * drops where the consumer takes over (e.g. source is `App[]`, destination
      * is `Scene[]`, and the real insertion happens via a server mutation).
      * Any other return value (including `undefined`) lets the library insert
