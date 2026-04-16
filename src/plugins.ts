@@ -29,7 +29,6 @@ const CLONE_GHOST_ORIGINAL_HTML = Symbol('cloneGhostOriginalHtml');
 const CLONE_GHOST_ORIGINAL_WIDTH = Symbol('cloneGhostOriginalWidth');
 const CLONE_GHOST_ORIGINAL_HEIGHT = Symbol('cloneGhostOriginalHeight');
 const CLONE_GHOST_APPLIED_BY = Symbol('cloneGhostAppliedBy');
-const CLONE_GHOST_STICKY = Symbol('cloneGhostSticky');
 
 type CloneGhostFactory = () => HTMLElement | string | null;
 
@@ -38,7 +37,6 @@ type CloneGhostEl = HTMLElement & {
   [CLONE_GHOST_ORIGINAL_WIDTH]?: string;
   [CLONE_GHOST_ORIGINAL_HEIGHT]?: string;
   [CLONE_GHOST_APPLIED_BY]?: HTMLElement;
-  [CLONE_GHOST_STICKY]?: boolean;
 };
 
 function getDraggedEl(): CloneGhostEl | null {
@@ -51,11 +49,8 @@ function getGhostEl(): CloneGhostEl | null {
     .ghost as CloneGhostEl | null;
 }
 
-// When `force` is true the sticky guard is ignored — used on drop/nulling so
-// end-of-drag cleanup always wins.
-function restoreCloneGhost(el: CloneGhostEl | null, force = false): void {
+function restoreCloneGhost(el: CloneGhostEl | null): void {
   if (!el || !el[CLONE_GHOST_APPLIED_BY]) return;
-  if (!force && el[CLONE_GHOST_STICKY]) return;
   const html = el[CLONE_GHOST_ORIGINAL_HTML];
   if (typeof html === 'string') el.innerHTML = html;
   const width = el[CLONE_GHOST_ORIGINAL_WIDTH];
@@ -66,14 +61,12 @@ function restoreCloneGhost(el: CloneGhostEl | null, force = false): void {
   el[CLONE_GHOST_ORIGINAL_WIDTH] = undefined;
   el[CLONE_GHOST_ORIGINAL_HEIGHT] = undefined;
   el[CLONE_GHOST_APPLIED_BY] = undefined;
-  el[CLONE_GHOST_STICKY] = undefined;
 }
 
 function applyCloneGhost(
   el: CloneGhostEl,
   factory: CloneGhostFactory,
   appliedBy: HTMLElement,
-  sticky = false,
 ): void {
   const preview = factory();
   if (!preview) return;
@@ -94,24 +87,22 @@ function applyCloneGhost(
     el.style.height = '';
   }
   el[CLONE_GHOST_APPLIED_BY] = appliedBy;
-  el[CLONE_GHOST_STICKY] = sticky;
 }
 
 function applyIfFresh(
   el: CloneGhostEl | null,
   factory: CloneGhostFactory,
   appliedBy: HTMLElement,
-  sticky = false,
 ): void {
   if (!el) return;
   if (el[CLONE_GHOST_APPLIED_BY] === appliedBy) return;
-  if (el[CLONE_GHOST_APPLIED_BY]) restoreCloneGhost(el, true);
-  applyCloneGhost(el, factory, appliedBy, sticky);
+  if (el[CLONE_GHOST_APPLIED_BY]) restoreCloneGhost(el);
+  applyCloneGhost(el, factory, appliedBy);
 }
 
-function restoreAll(force = false): void {
-  restoreCloneGhost(getDraggedEl(), force);
-  restoreCloneGhost(getGhostEl(), force);
+function restoreAll(): void {
+  restoreCloneGhost(getDraggedEl());
+  restoreCloneGhost(getGhostEl());
 }
 
 // Non-global hooks only fire on sortables where `options[pluginName]` is set;
@@ -120,27 +111,10 @@ function restoreAll(force = false): void {
 // `dragOverValid` because we only want to apply on destinations that have
 // `cloneGhost` configured. Every restore path uses a `Global` variant
 // because restores happen on the source sortable during events like drop,
-// nulling, revert, and dragOver-with-isOwner — none of which fire the
+// nulling, revert, and dragOver-with-isOwner, none of which fire the
 // non-global variants on a source that doesn't declare `cloneGhost`.
 function CloneGhostPlugin(this: unknown) {}
 CloneGhostPlugin.prototype = {
-  // With `cloneGhostOnStart`, apply the destination's preview to
-  // Sortable.ghost at drag start so the cursor-follower reflects the drop
-  // target from the first pixel of movement. Only applied to the ghost (not
-  // dragEl) because dragEl is still in the source at this point and
-  // swapping it would mutate the source item's visible markup. The apply is
-  // marked sticky so `dragOverGlobal(isOwner)` and `revertGlobal` don't
-  // restore it when the cursor passes back over the source.
-  dragStartGlobal(args: PluginArgs) {
-    const opts = args.sortable.options as {
-      cloneGhost?: CloneGhostFactory;
-      cloneGhostOnStart?: boolean;
-    };
-    if (!opts.cloneGhost || !opts.cloneGhostOnStart) return;
-    const active = (Sortable as unknown as { active: Sortable | null }).active;
-    if (active?.el === args.sortable.el) return;
-    applyIfFresh(getGhostEl(), opts.cloneGhost, args.sortable.el, true);
-  },
   dragOverValid(args: PluginArgs) {
     if (args.isOwner) return;
     const factory = (
@@ -168,10 +142,10 @@ CloneGhostPlugin.prototype = {
     }
   },
   dropGlobal() {
-    restoreAll(true);
+    restoreAll();
   },
   nullingGlobal() {
-    restoreAll(true);
+    restoreAll();
   },
 };
 (CloneGhostPlugin as unknown as { pluginName: string }).pluginName =
@@ -187,7 +161,7 @@ CloneGhostPlugin.prototype = {
 // both driven from a single pointermove listener and a single rect check
 // per instance. Registration is driven from useDraggable rather than from
 // SortableJS's plugin lifecycle because the tracker needs to iterate all
-// sortables on every pointermove — a plugin instance only sees its own.
+// sortables on every pointermove, and a plugin instance only sees its own.
 // ---------------------------------------------------------------------------
 
 interface DragStateRegistration {
@@ -293,8 +267,8 @@ DragStateTrackerPlugin.prototype = {
 
 const BODY_DRAG_CLASS = 'sortable-dragging';
 
-// Global hooks because BodyClass is always active — it has no option to
-// key off, so non-global variants would never fire.
+// Global hooks because BodyClass is always active. It has no option to key
+// off, so non-global variants would never fire.
 function BodyClassPlugin(this: unknown) {}
 BodyClassPlugin.prototype = {
   dragStartGlobal() {
@@ -313,7 +287,7 @@ let mounted = false;
 
 // Mounts CloneGhost, DragStateTracker, and BodyClass on the shared Sortable
 // plugin registry. Idempotent; safe to call repeatedly. Called once from
-// useDraggable's module initialization — via an explicit call rather than a
+// useDraggable's module initialization, via an explicit call rather than a
 // side-effect import so the module isn't tree-shaken under `sideEffects:
 // false`.
 export function mountDragPlugins(): void {
