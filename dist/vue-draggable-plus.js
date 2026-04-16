@@ -116,6 +116,7 @@ function X() {
   N(H()), N(V());
 }
 const L = /* @__PURE__ */ new Map();
+let P = !1;
 function ft(e, t) {
   return L.set(e, { getFactory: t, observer: null }), () => {
     var o;
@@ -141,7 +142,6 @@ function gt(e) {
     ), o.observer.observe(l, { childList: !0, subtree: !0 })));
   }), n && (P = !0, oe());
 }
-let P = !1;
 function pt() {
   L.forEach((e) => {
     var t;

@@ -139,6 +139,14 @@ const cloneGhostOnStartRegistrations = new Map<
   CloneGhostOnStartRegistration
 >();
 
+// Tracks whether cloneGhostOnStart successfully applied a preview during
+// this drag. While true, dragOverGlobal's "snap back to source" restore
+// and revertGlobal's ghost restore are suppressed: the cloneGhostOnStart
+// contract is "show this preview from drag start," so the ghost must stay
+// morphed even when the cursor returns to the source list. Reset on
+// nullingGlobal.
+let cloneGhostOnStartHasApplied = false;
+
 export function registerCloneGhostOnStart(
   el: HTMLElement,
   getFactory: () => CloneGhostFactory | undefined,
@@ -179,13 +187,6 @@ export function triggerCloneGhostOnStart(sourceEl: HTMLElement): void {
     clearBodyCloneGhostPending();
   }
 }
-
-// Tracks whether cloneGhostOnStart successfully applied a preview during
-// this drag. While true, dragOverGlobal's "snap back to source" restore is
-// suppressed: the cloneGhostOnStart contract is "show this preview from
-// drag start," so the ghost must stay morphed even when the cursor is over
-// the source list. Reset on nullingGlobal.
-let cloneGhostOnStartHasApplied = false;
 
 function disconnectCloneGhostOnStartObservers(): void {
   cloneGhostOnStartRegistrations.forEach((entry) => {
