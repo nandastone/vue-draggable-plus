@@ -154,6 +154,7 @@ export function registerCloneGhostOnStart(
 export function triggerCloneGhostOnStart(sourceEl: HTMLElement): void {
   const ghost = getGhostEl();
   if (!ghost) return;
+  let applied = false;
   cloneGhostOnStartRegistrations.forEach((entry, destEl) => {
     if (destEl === sourceEl) return;
     const factory = entry.getFactory();
@@ -161,6 +162,7 @@ export function triggerCloneGhostOnStart(sourceEl: HTMLElement): void {
     const preview = factory();
     if (!preview) return;
     applyIfFresh(ghost, () => preview, destEl);
+    applied = true;
     if (!(preview instanceof HTMLElement)) return;
     entry.observer?.disconnect();
     entry.observer = new MutationObserver(() =>
@@ -168,13 +170,11 @@ export function triggerCloneGhostOnStart(sourceEl: HTMLElement): void {
     );
     entry.observer.observe(preview, { childList: true, subtree: true });
   });
-  // Paired with hideGhostForCloneGhostOnStart: reveal once the preview has
-  // had a chance to apply. Unconditional (even if nothing applied) so the
-  // ghost never stays hidden if Vue failed to flush the preview in time.
-  if (ghostHiddenForCloneGhostOnStart) {
-    ghost.style.visibility = '';
-    ghostHiddenForCloneGhostOnStart = false;
-  }
+  // Reveal only on successful apply. If the preview wasn't ready (Vue
+  // hadn't flushed in time), leave the ghost hidden until dragOverValid
+  // applies cloneGhost when the cursor enters a destination, or until
+  // nullingGlobal cleans up on drag end.
+  if (applied) clearBodyCloneGhostPending();
 }
 
 function disconnectCloneGhostOnStartObservers(): void {
@@ -184,28 +184,45 @@ function disconnectCloneGhostOnStartObservers(): void {
   });
 }
 
-// Tracks whether the cursor-follower was hidden at drag start so that
-// triggerCloneGhostOnStart can reveal it after applying the preview. A
-// module-level flag is safe because SortableJS supports one active drag at
-// a time. Reset by nullingGlobal as a safety net.
-let ghostHiddenForCloneGhostOnStart = false;
+// Drives a CSS rule (injected at mount) that hides any cursor-follower
+// while a cloneGhostOnStart drag is in flight but hasn't yet had its
+// preview applied. Set in CloneGhostPlugin.dragStartGlobal (which fires
+// before SortableJS's _appendGhost), so the ghost is born hidden and the
+// browser never paints a frame of the source dragEl's cloned content.
+// Cleared once the preview applies (either via triggerCloneGhostOnStart's
+// nextTick after Vue's flush, or via dragOverValid when the cursor enters
+// a destination), and on nullingGlobal as a safety net.
+const BODY_CLONE_GHOST_PENDING_CLASS = 'vue-draggable-plus-clone-ghost-pending';
+const CLONE_GHOST_STYLE_ID = 'vue-draggable-plus-clone-ghost-style';
 
-// Hides the cursor-follower at drag start when at least one non-source
-// destination has cloneGhostOnStart opted in. Paired with the reveal at the
-// end of triggerCloneGhostOnStart to avoid a frame of the dragEl's cloned
-// content painting before Vue's next-tick render flushes and the preview is
-// swapped in. No-op if no destination is applicable.
-export function hideGhostForCloneGhostOnStart(sourceEl: HTMLElement): void {
-  const ghost = getGhostEl();
-  if (!ghost) return;
+function ensureCloneGhostStyleInjected(): void {
+  if (typeof document === 'undefined') return;
+  if (document.getElementById(CLONE_GHOST_STYLE_ID)) return;
+  const style = document.createElement('style');
+  style.id = CLONE_GHOST_STYLE_ID;
+  // Targets both .sortable-drag (always applied to the ghost) and
+  // .sortable-fallback (applied in fallback mode) so the rule covers both
+  // native HTML5 drag and forceFallback consumers.
+  style.textContent =
+    `body.${BODY_CLONE_GHOST_PENDING_CLASS} .sortable-drag,` +
+    `body.${BODY_CLONE_GHOST_PENDING_CLASS} .sortable-fallback` +
+    `{visibility:hidden!important}`;
+  document.head.appendChild(style);
+}
+
+function setBodyCloneGhostPending(sourceEl: HTMLElement): void {
   let applicable = false;
   cloneGhostOnStartRegistrations.forEach((entry, destEl) => {
     if (destEl === sourceEl) return;
     if (entry.getFactory()) applicable = true;
   });
   if (!applicable) return;
-  ghost.style.visibility = 'hidden';
-  ghostHiddenForCloneGhostOnStart = true;
+  document.body.classList.add(BODY_CLONE_GHOST_PENDING_CLASS);
+}
+
+function clearBodyCloneGhostPending(): void {
+  if (typeof document === 'undefined') return;
+  document.body.classList.remove(BODY_CLONE_GHOST_PENDING_CLASS);
 }
 
 // Non-global hooks only fire on sortables where `options[pluginName]` is set;
@@ -218,6 +235,15 @@ export function hideGhostForCloneGhostOnStart(sourceEl: HTMLElement): void {
 // non-global variants on a source that doesn't declare `cloneGhost`.
 function CloneGhostPlugin(this: unknown) {}
 CloneGhostPlugin.prototype = {
+  // Fires in SortableJS's _onDragStart, BEFORE _appendGhost (which is
+  // scheduled via setTimeout(0) in _dragStarted). Setting the body class
+  // here means the ghost is born with visibility:hidden via CSS — the
+  // browser never paints a frame of the source dragEl's cloned content.
+  // Cleared by triggerCloneGhostOnStart (after applying via nextTick) or
+  // dragOverValid (when the cursor enters a destination).
+  dragStartGlobal(args: PluginArgs) {
+    setBodyCloneGhostPending(args.sortable.el);
+  },
   dragOverValid(args: PluginArgs) {
     if (args.isOwner) return;
     const factory = (
@@ -226,6 +252,9 @@ CloneGhostPlugin.prototype = {
     if (!factory) return;
     applyIfFresh(getDraggedEl(), factory, args.sortable.el);
     applyIfFresh(getGhostEl(), factory, args.sortable.el);
+    // The cursor entered a destination with cloneGhost. The preview is now
+    // applied to the ghost, so the pending hide can lift.
+    clearBodyCloneGhostPending();
   },
   dragOverGlobal(args: PluginArgs) {
     if (!args.isOwner) return;
@@ -250,7 +279,7 @@ CloneGhostPlugin.prototype = {
   nullingGlobal() {
     restoreAll();
     disconnectCloneGhostOnStartObservers();
-    ghostHiddenForCloneGhostOnStart = false;
+    clearBodyCloneGhostPending();
   },
 };
 (CloneGhostPlugin as unknown as { pluginName: string }).pluginName =
@@ -398,6 +427,7 @@ let mounted = false;
 export function mountDragPlugins(): void {
   if (mounted) return;
   mounted = true;
+  ensureCloneGhostStyleInjected();
   Sortable.mount(
     CloneGhostPlugin as never,
     DragStateTrackerPlugin as never,
