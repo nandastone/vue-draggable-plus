@@ -282,7 +282,15 @@ CloneGhostPlugin.prototype = {
   // Upstream PR: https://github.com/SortableJS/Sortable/pull/2465
   revertGlobal() {
     const dragged = getDraggedEl();
-    restoreAll();
+    // Always restore dragEl so the source list's element doesn't carry the
+    // destination preview's content when it returns to its origin.
+    restoreCloneGhost(dragged);
+    // For cloneGhostOnStart, the cursor-follower stays morphed for the
+    // whole drag, including across revert. Otherwise restore alongside
+    // dragEl so the ghost matches dragEl's content.
+    if (!cloneGhostOnStartHasApplied) {
+      restoreCloneGhost(getGhostEl());
+    }
     if (dragged && dragged.style.display === 'none') {
       dragged.style.display = '';
     }

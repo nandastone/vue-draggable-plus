@@ -1,26 +1,26 @@
 var Ue = Object.defineProperty, $e = Object.defineProperties;
 var Ye = Object.getOwnPropertyDescriptors;
-var B = Object.getOwnPropertySymbols;
+var R = Object.getOwnPropertySymbols;
 var de = Object.prototype.hasOwnProperty, fe = Object.prototype.propertyIsEnumerable;
 var ae = (e, t, n) => t in e ? Ue(e, t, { enumerable: !0, configurable: !0, writable: !0, value: n }) : e[t] = n, C = (e, t) => {
   for (var n in t || (t = {}))
     de.call(t, n) && ae(e, n, t[n]);
-  if (B)
-    for (var n of B(t))
+  if (R)
+    for (var n of R(t))
       fe.call(t, n) && ae(e, n, t[n]);
   return e;
 }, ge = (e, t) => $e(e, Ye(t));
-var k = (e, t) => {
+var q = (e, t) => {
   var n = {};
   for (var o in e)
     de.call(e, o) && t.indexOf(o) < 0 && (n[o] = e[o]);
-  if (e != null && B)
-    for (var o of B(e))
+  if (e != null && R)
+    for (var o of R(e))
       t.indexOf(o) < 0 && fe.call(e, o) && (n[o] = e[o]);
   return n;
 };
-import { shallowRef as Ae, getCurrentInstance as re, unref as d, watch as je, onUnmounted as ke, onMounted as ze, nextTick as J, isRef as z, defineComponent as qe, computed as pe, toRefs as We, ref as Je, reactive as Xe, h as Ke, isProxy as Qe } from "vue";
-import N from "sortablejs";
+import { shallowRef as Ae, getCurrentInstance as le, unref as d, watch as je, onUnmounted as ke, onMounted as ze, nextTick as Q, isRef as W, defineComponent as qe, computed as pe, toRefs as We, ref as Je, reactive as Xe, h as Ke, isProxy as Qe } from "vue";
+import M from "sortablejs";
 const Ee = "[vue-draggable-plus]: ";
 function Ze(e) {
   console.warn(Ee + e);
@@ -53,7 +53,7 @@ function ye(e, t, n) {
   const o = e.children[n];
   e.insertBefore(t, o);
 }
-function q(e) {
+function J(e) {
   e.parentNode && e.parentNode.removeChild(e);
 }
 function lt(e, t = document) {
@@ -83,22 +83,22 @@ function ve(e, t) {
 function ct(e) {
   return e.charCodeAt(0) === 111 && e.charCodeAt(1) === 110 && (e.charCodeAt(2) > 122 || e.charCodeAt(2) < 97);
 }
-const at = Object.assign, X = Symbol("cloneGhostOriginalHtml"), K = Symbol("cloneGhostOriginalWidth"), Q = Symbol("cloneGhostOriginalHeight"), _ = Symbol("cloneGhostAppliedBy");
+const at = Object.assign, Z = Symbol("cloneGhostOriginalHtml"), ee = Symbol("cloneGhostOriginalWidth"), te = Symbol("cloneGhostOriginalHeight"), _ = Symbol("cloneGhostAppliedBy");
 function H() {
-  return N.dragged;
+  return M.dragged;
 }
-function le() {
-  return N.ghost;
+function V() {
+  return M.ghost;
 }
-function Z(e) {
+function N(e) {
   if (!e || !e[_])
     return;
-  const t = e[X];
+  const t = e[Z];
   typeof t == "string" && (e.innerHTML = t);
-  const n = e[K];
+  const n = e[ee];
   typeof n == "string" && (e.style.width = n);
-  const o = e[Q];
-  typeof o == "string" && (e.style.height = o), e[X] = void 0, e[K] = void 0, e[Q] = void 0, e[_] = void 0;
+  const o = e[te];
+  typeof o == "string" && (e.style.height = o), e[Z] = void 0, e[ee] = void 0, e[te] = void 0, e[_] = void 0;
 }
 function Ie(e, t) {
   e.innerHTML = t.innerHTML;
@@ -107,13 +107,13 @@ function Ie(e, t) {
 }
 function dt(e, t, n) {
   const o = t();
-  o && (e[X] = e.innerHTML, e[K] = e.style.width, e[Q] = e.style.height, o instanceof HTMLElement ? Ie(e, o) : (e.innerHTML = o, e.style.width = "", e.style.height = ""), e[_] = n);
+  o && (e[Z] = e.innerHTML, e[ee] = e.style.width, e[te] = e.style.height, o instanceof HTMLElement ? Ie(e, o) : (e.innerHTML = o, e.style.width = "", e.style.height = ""), e[_] = n);
 }
-function ee(e, t, n) {
-  e && e[_] !== n && (e[_] && Z(e), dt(e, t, n));
+function ne(e, t, n) {
+  e && e[_] !== n && (e[_] && N(e), dt(e, t, n));
 }
-function R() {
-  Z(H()), Z(le());
+function X() {
+  N(H()), N(V());
 }
 const L = /* @__PURE__ */ new Map();
 function ft(e, t) {
@@ -124,7 +124,7 @@ function ft(e, t) {
   };
 }
 function gt(e) {
-  const t = le();
+  const t = V();
   if (!t)
     return;
   let n = !1;
@@ -136,37 +136,37 @@ function gt(e) {
     if (!c)
       return;
     const l = c();
-    l && (ee(t, () => l, i), n = !0, l instanceof HTMLElement && ((g = o.observer) == null || g.disconnect(), o.observer = new MutationObserver(
+    l && (ne(t, () => l, i), n = !0, l instanceof HTMLElement && ((g = o.observer) == null || g.disconnect(), o.observer = new MutationObserver(
       () => Ie(t, l)
     ), o.observer.observe(l, { childList: !0, subtree: !0 })));
-  }), n && (te = !0, ne());
+  }), n && (P = !0, oe());
 }
-let te = !1;
+let P = !1;
 function pt() {
   L.forEach((e) => {
     var t;
     (t = e.observer) == null || t.disconnect(), e.observer = null;
   });
 }
-const P = "vue-draggable-plus-clone-ghost-pending", Se = "vue-draggable-plus-clone-ghost-style";
+const F = "vue-draggable-plus-clone-ghost-pending", Se = "vue-draggable-plus-clone-ghost-style";
 function mt() {
   if (typeof document == "undefined" || document.getElementById(Se))
     return;
   const e = document.createElement("style");
-  e.id = Se, e.textContent = `body.${P} .sortable-drag,body.${P} .sortable-fallback{visibility:hidden!important}`, document.head.appendChild(e);
+  e.id = Se, e.textContent = `body.${F} .sortable-drag,body.${F} .sortable-fallback{visibility:hidden!important}`, document.head.appendChild(e);
 }
 function ht(e) {
   let t = !1;
   L.forEach((n, o) => {
     o !== e && n.getFactory() && (t = !0);
-  }), t && document.body.classList.add(P);
+  }), t && document.body.classList.add(F);
 }
-function ne() {
-  typeof document != "undefined" && document.body.classList.remove(P);
+function oe() {
+  typeof document != "undefined" && document.body.classList.remove(F);
 }
-function F() {
+function $() {
 }
-F.prototype = {
+$.prototype = {
   // Fires in SortableJS's _onDragStart, BEFORE _appendGhost (which is
   // scheduled via setTimeout(0) in _dragStarted). Setting the body class
   // here means the ghost is born with visibility:hidden via CSS — the
@@ -180,10 +180,10 @@ F.prototype = {
     if (e.isOwner)
       return;
     const t = e.sortable.options.cloneGhost;
-    t && (ee(H(), t, e.sortable.el), ee(le(), t, e.sortable.el), ne());
+    t && (ne(H(), t, e.sortable.el), ne(V(), t, e.sortable.el), oe());
   },
   dragOverGlobal(e) {
-    e.isOwner && (te || R());
+    e.isOwner && (P || X());
   },
   // WORKAROUND (unpatched sortablejs): SortableJS ignores `put: false` on
   // the revert-to-origin path (_onDragOver ~line 1748), so dragEl can be
@@ -193,18 +193,18 @@ F.prototype = {
   // Upstream PR: https://github.com/SortableJS/Sortable/pull/2465
   revertGlobal() {
     const e = H();
-    R(), e && e.style.display === "none" && (e.style.display = "");
+    N(e), P || N(V()), e && e.style.display === "none" && (e.style.display = "");
   },
   dropGlobal() {
-    R();
+    X();
   },
   nullingGlobal() {
-    R(), pt(), ne(), te = !1;
+    X(), pt(), oe(), P = !1;
   }
 };
-F.pluginName = "cloneGhost";
-F.initializeByDefault = !0;
-const V = /* @__PURE__ */ new Map();
+$.pluginName = "cloneGhost";
+$.initializeByDefault = !0;
+const U = /* @__PURE__ */ new Map();
 let T = null;
 function bt(e, t, n) {
   return e >= n.left && e <= n.right && t >= n.top && t <= n.bottom;
@@ -214,7 +214,7 @@ function yt() {
     return;
   const e = (t) => {
     const n = H();
-    V.forEach(({ isDragOver: o, getOptions: i }, c) => {
+    U.forEach(({ isDragOver: o, getOptions: i }, c) => {
       var g;
       const l = bt(
         t.clientX,
@@ -223,7 +223,7 @@ function yt() {
       );
       if (o.value !== l) {
         o.value = l;
-        const b = N.active;
+        const b = M.active;
         n && n.parentNode === c && (b == null ? void 0 : b.el) !== c && ((g = i()) != null && g.hideOnLeave) && (n.style.display = l ? "" : "none");
       }
     });
@@ -234,18 +234,18 @@ function vt() {
   T && (document.removeEventListener("pointermove", T), T = null);
 }
 function St() {
-  V.forEach(({ isDragOver: e }) => {
+  U.forEach(({ isDragOver: e }) => {
     e.value && (e.value = !1);
   });
 }
 function Ot(e, t, n) {
-  return V.set(e, { isDragOver: t, getOptions: n }), () => {
-    V.delete(e);
+  return U.set(e, { isDragOver: t, getOptions: n }), () => {
+    U.delete(e);
   };
 }
-function U() {
+function Y() {
 }
-U.prototype = {
+Y.prototype = {
   dragStartGlobal() {
     yt();
   },
@@ -255,12 +255,12 @@ U.prototype = {
     e && e.style.display === "none" && (e.style.display = "");
   }
 };
-U.pluginName = "dragStateTracker";
-U.initializeByDefault = !0;
+Y.pluginName = "dragStateTracker";
+Y.initializeByDefault = !0;
 const Oe = "sortable-dragging";
-function $() {
+function j() {
 }
-$.prototype = {
+j.prototype = {
   dragStartGlobal() {
     document.body.classList.add(Oe);
   },
@@ -268,14 +268,14 @@ $.prototype = {
     document.body.classList.remove(Oe);
   }
 };
-$.pluginName = "bodyClass";
-$.initializeByDefault = !0;
+j.pluginName = "bodyClass";
+j.initializeByDefault = !0;
 let Ce = !1;
 function Ct() {
-  Ce || (Ce = !0, mt(), N.mount(
-    F,
-    U,
-    $
+  Ce || (Ce = !0, mt(), M.mount(
+    $,
+    Y,
+    j
   ));
 }
 Ct();
@@ -283,10 +283,10 @@ function Gt(e) {
   return e == null ? e : JSON.parse(JSON.stringify(e));
 }
 function Lt(e) {
-  re() && ke(e);
+  le() && ke(e);
 }
 function wt(e) {
-  re() ? ze(e) : J(e);
+  le() ? ze(e) : Q(e);
 }
 let De = null, Te = null;
 const _e = Ae(null);
@@ -302,7 +302,7 @@ function At() {
 const Le = Symbol("cloneElement");
 function He(...e) {
   var ue, ce;
-  const t = (ue = re()) == null ? void 0 : ue.proxy;
+  const t = (ue = le()) == null ? void 0 : ue.proxy;
   let n = null;
   const o = e[0];
   let [, i, c] = e;
@@ -315,17 +315,17 @@ function He(...e) {
     fallbackOnBody: S,
     customUpdate: E
   } = (ce = d(c)) != null ? ce : {};
-  function Y(r) {
+  function k(r) {
     var h;
     const { from: s, oldIndex: a, item: p } = r, u = Array.from(s.childNodes);
     n = A && !S ? u.slice(0, -1) : u;
     const f = d((h = d(i)) == null ? void 0 : h[a]), m = G(f);
-    Ge(f, m), p[Le] = m, J(() => gt(s));
+    Ge(f, m), p[Le] = m, Q(() => gt(s));
   }
-  function j(r) {
+  function z(r) {
     const s = r.item[Le];
     if (!ot(s)) {
-      if (q(r.item), z(i)) {
+      if (J(r.item), W(i)) {
         const a = [...d(i)];
         i.value = be(a, r.newDraggableIndex, s);
         return;
@@ -333,13 +333,13 @@ function He(...e) {
       be(d(i), r.newDraggableIndex, s);
     }
   }
-  function M(r) {
+  function x(r) {
     const { from: s, item: a, oldIndex: p, oldDraggableIndex: u, pullMode: f, clone: m } = r;
     if (ye(s, a, p), f === "clone") {
-      q(m);
+      J(m);
       return;
     }
-    if (z(i)) {
+    if (W(i)) {
       const h = [...d(i)];
       i.value = he(h, u);
       return;
@@ -352,7 +352,7 @@ function He(...e) {
       return;
     }
     const { from: s, item: a, oldIndex: p, oldDraggableIndex: u, newDraggableIndex: f } = r;
-    if (q(a), ye(s, a, p), z(i)) {
+    if (J(a), ye(s, a, p), W(i)) {
       const m = [...d(i)];
       i.value = me(
         m,
@@ -373,8 +373,8 @@ function He(...e) {
         n == null || n.some((I, O) => {
           if (h && (n == null ? void 0 : n.length) !== u.childNodes.length)
             return p.insertBefore(h, I.nextSibling), !0;
-          const x = u.childNodes[O];
-          h = u == null ? void 0 : u.replaceChild(I, x);
+          const B = u.childNodes[O];
+          h = u == null ? void 0 : u.replaceChild(I, B);
         });
       }
     } catch (h) {
@@ -382,16 +382,16 @@ function He(...e) {
     } finally {
       n = null;
     }
-    J(() => {
+    Q(() => {
       if (Ge(), f)
         throw f;
     });
   }
   const xe = {
     onUpdate: Ne,
-    onStart: Y,
-    onAdd: j,
-    onRemove: M,
+    onStart: k,
+    onAdd: z,
+    onRemove: x,
     onEnd: Me
   };
   function Be(r) {
@@ -400,11 +400,11 @@ function He(...e) {
   }
   function ie() {
     var h;
-    const I = (h = d(c)) != null ? h : {}, { immediate: r, clone: s } = I, a = k(I, ["immediate", "clone"]);
-    ve(a, (O, x) => {
+    const I = (h = d(c)) != null ? h : {}, { immediate: r, clone: s } = I, a = q(I, ["immediate", "clone"]);
+    ve(a, (O, B) => {
       ct(O) && (a[O] = (D, ...Ve) => {
         const Fe = At();
-        return at(D, Fe), x(D, ...Ve);
+        return at(D, Fe), B(D, ...Ve);
       });
     });
     const p = a.onAdd;
@@ -418,7 +418,7 @@ function He(...e) {
     }), f;
   }
   const se = (r) => {
-    r = Be(r), l && v.destroy(), l = new N(r, ie()), g = Ot(
+    r = Be(r), l && v.destroy(), l = new M(r, ie()), g = Ot(
       r,
       w,
       () => d(c)
@@ -459,7 +459,7 @@ function He(...e) {
     isDragOver: w
   });
 }
-const oe = [
+const re = [
   "update",
   "start",
   "add",
@@ -516,7 +516,7 @@ const oe = [
   "tag",
   "target",
   "customUpdate",
-  ...oe.map((e) => `on${e.replace(/^\S/, (t) => t.toUpperCase())}`)
+  ...re.map((e) => `on${e.replace(/^\S/, (t) => t.toUpperCase())}`)
 ], _t = qe({
   name: "VueDraggable",
   model: {
@@ -524,15 +524,15 @@ const oe = [
     event: "update:modelValue"
   },
   props: Et,
-  emits: ["update:modelValue", ...oe],
+  emits: ["update:modelValue", ...re],
   setup(e, { slots: t, emit: n, expose: o, attrs: i }) {
-    const c = oe.reduce((y, G) => {
+    const c = re.reduce((y, G) => {
       const A = `on${G.replace(/^\S/, (S) => S.toUpperCase())}`;
       return y[A] = (...S) => n(G, ...S), y;
     }, {}), l = pe(() => {
-      const S = We(e), { modelValue: y } = S, G = k(S, ["modelValue"]), A = Object.entries(G).reduce((E, [Y, j]) => {
-        const M = d(j);
-        return M !== void 0 && (E[Y] = M), E;
+      const S = We(e), { modelValue: y } = S, G = q(S, ["modelValue"]), A = Object.entries(G).reduce((E, [k, z]) => {
+        const x = d(z);
+        return x !== void 0 && (E[k] = x), E;
       }, {});
       return C(C({}, c), nt(C(C({}, i), A)));
     }), g = pe({
@@ -549,14 +549,14 @@ const oe = [
 }), we = {
   mounted: "mounted",
   unmounted: "unmounted"
-}, W = /* @__PURE__ */ new WeakMap(), Ht = {
+}, K = /* @__PURE__ */ new WeakMap(), Ht = {
   [we.mounted](e, t) {
     const n = Qe(t.value) ? [t.value] : t.value, [o, i] = n, c = He(e, o, i);
-    W.set(e, c.destroy);
+    K.set(e, c.destroy);
   },
   [we.unmounted](e) {
     var t;
-    (t = W.get(e)) == null || t(), W.delete(e);
+    (t = K.get(e)) == null || t(), K.delete(e);
   }
 };
 export {
