@@ -31,6 +31,7 @@ import {
 } from './utils';
 
 import {
+  hideGhostForCloneGhostOnStart,
   mountDragPlugins,
   registerCloneGhostOnStart,
   registerDragStateInstance,
@@ -273,10 +274,12 @@ export function useDraggable<T>(...args: any[]): UseDraggableReturn {
     const clonedData = clone(data);
     setCurrentData(data, clonedData);
     item[CLONE_ELEMENT_KEY] = clonedData;
-    // Deferred so destinations whose preview element is gated on
-    // `draggedData` (e.g. `v-if="previewScene"`) render before we read their
-    // ref. Runs after SortableJS's 'start' event dispatch, so
-    // Sortable.ghost already exists.
+    // Hide the ghost synchronously, reveal after the preview applies. Runs
+    // in the same call stack as SortableJS's _appendGhost, so the browser
+    // never paints the dragEl's cloned content. The nextTick below waits for
+    // Vue to flush (destinations whose preview is gated on `draggedData`
+    // render first), then applies the preview and reveals the ghost.
+    hideGhostForCloneGhostOnStart(from);
     nextTick(() => triggerCloneGhostOnStart(from));
   }
 

@@ -168,6 +168,13 @@ export function triggerCloneGhostOnStart(sourceEl: HTMLElement): void {
     );
     entry.observer.observe(preview, { childList: true, subtree: true });
   });
+  // Paired with hideGhostForCloneGhostOnStart: reveal once the preview has
+  // had a chance to apply. Unconditional (even if nothing applied) so the
+  // ghost never stays hidden if Vue failed to flush the preview in time.
+  if (ghostHiddenForCloneGhostOnStart) {
+    ghost.style.visibility = '';
+    ghostHiddenForCloneGhostOnStart = false;
+  }
 }
 
 function disconnectCloneGhostOnStartObservers(): void {
@@ -175,6 +182,30 @@ function disconnectCloneGhostOnStartObservers(): void {
     entry.observer?.disconnect();
     entry.observer = null;
   });
+}
+
+// Tracks whether the cursor-follower was hidden at drag start so that
+// triggerCloneGhostOnStart can reveal it after applying the preview. A
+// module-level flag is safe because SortableJS supports one active drag at
+// a time. Reset by nullingGlobal as a safety net.
+let ghostHiddenForCloneGhostOnStart = false;
+
+// Hides the cursor-follower at drag start when at least one non-source
+// destination has cloneGhostOnStart opted in. Paired with the reveal at the
+// end of triggerCloneGhostOnStart to avoid a frame of the dragEl's cloned
+// content painting before Vue's next-tick render flushes and the preview is
+// swapped in. No-op if no destination is applicable.
+export function hideGhostForCloneGhostOnStart(sourceEl: HTMLElement): void {
+  const ghost = getGhostEl();
+  if (!ghost) return;
+  let applicable = false;
+  cloneGhostOnStartRegistrations.forEach((entry, destEl) => {
+    if (destEl === sourceEl) return;
+    if (entry.getFactory()) applicable = true;
+  });
+  if (!applicable) return;
+  ghost.style.visibility = 'hidden';
+  ghostHiddenForCloneGhostOnStart = true;
 }
 
 // Non-global hooks only fire on sortables where `options[pluginName]` is set;
@@ -219,6 +250,7 @@ CloneGhostPlugin.prototype = {
   nullingGlobal() {
     restoreAll();
     disconnectCloneGhostOnStartObservers();
+    ghostHiddenForCloneGhostOnStart = false;
   },
 };
 (CloneGhostPlugin as unknown as { pluginName: string }).pluginName =
