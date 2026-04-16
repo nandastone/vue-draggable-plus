@@ -63,6 +63,17 @@ function restoreCloneGhost(el: CloneGhostEl | null): void {
   el[CLONE_GHOST_APPLIED_BY] = undefined;
 }
 
+// Match the preview's measured box so the cursor-follower and placeholder
+// morph to the destination's card dimensions instead of the source item's.
+// Consumers that need a specific size should style the preview element at
+// that size before returning it.
+function syncGhostFromPreview(el: CloneGhostEl, preview: HTMLElement): void {
+  el.innerHTML = preview.innerHTML;
+  const rect = preview.getBoundingClientRect();
+  el.style.width = `${rect.width}px`;
+  el.style.height = `${rect.height}px`;
+}
+
 function applyCloneGhost(
   el: CloneGhostEl,
   factory: CloneGhostFactory,
@@ -73,16 +84,10 @@ function applyCloneGhost(
   el[CLONE_GHOST_ORIGINAL_HTML] = el.innerHTML;
   el[CLONE_GHOST_ORIGINAL_WIDTH] = el.style.width;
   el[CLONE_GHOST_ORIGINAL_HEIGHT] = el.style.height;
-  el.innerHTML = typeof preview === 'string' ? preview : preview.innerHTML;
-  // Match the preview's measured box so the cursor-follower and placeholder
-  // morph to the destination's card dimensions instead of the source item's.
-  // Consumers that need a specific size should style the preview element at
-  // that size before returning it. String previews fall back to auto sizing.
   if (preview instanceof HTMLElement) {
-    const rect = preview.getBoundingClientRect();
-    el.style.width = `${rect.width}px`;
-    el.style.height = `${rect.height}px`;
+    syncGhostFromPreview(el, preview);
   } else {
+    el.innerHTML = preview;
     el.style.width = '';
     el.style.height = '';
   }
@@ -121,15 +126,27 @@ function restoreAll(): void {
 // fork has to broadcast to destinations from there.
 // ---------------------------------------------------------------------------
 
-const cloneGhostOnStartRegistrations = new Map<HTMLElement, CloneGhostFactory>();
-const cloneGhostOnStartObservers = new Map<HTMLElement, MutationObserver>();
+// `getFactory` is a live getter so reactive option changes to `cloneGhost`
+// or `cloneGhostOnStart` take effect without re-registering. Returning
+// `undefined` means the sortable isn't currently participating.
+interface CloneGhostOnStartRegistration {
+  getFactory: () => CloneGhostFactory | undefined;
+  observer: MutationObserver | null;
+}
+
+const cloneGhostOnStartRegistrations = new Map<
+  HTMLElement,
+  CloneGhostOnStartRegistration
+>();
 
 export function registerCloneGhostOnStart(
   el: HTMLElement,
-  factory: CloneGhostFactory,
+  getFactory: () => CloneGhostFactory | undefined,
 ): () => void {
-  cloneGhostOnStartRegistrations.set(el, factory);
+  cloneGhostOnStartRegistrations.set(el, { getFactory, observer: null });
   return () => {
+    const entry = cloneGhostOnStartRegistrations.get(el);
+    entry?.observer?.disconnect();
     cloneGhostOnStartRegistrations.delete(el);
   };
 }
@@ -137,26 +154,27 @@ export function registerCloneGhostOnStart(
 export function triggerCloneGhostOnStart(sourceEl: HTMLElement): void {
   const ghost = getGhostEl();
   if (!ghost) return;
-  cloneGhostOnStartRegistrations.forEach((factory, destEl) => {
+  cloneGhostOnStartRegistrations.forEach((entry, destEl) => {
     if (destEl === sourceEl) return;
+    const factory = entry.getFactory();
+    if (!factory) return;
     const preview = factory();
     if (!preview) return;
     applyIfFresh(ghost, () => preview, destEl);
     if (!(preview instanceof HTMLElement)) return;
-    const observer = new MutationObserver(() => {
-      ghost.innerHTML = preview.innerHTML;
-      const rect = preview.getBoundingClientRect();
-      ghost.style.width = `${rect.width}px`;
-      ghost.style.height = `${rect.height}px`;
-    });
-    observer.observe(preview, { childList: true, subtree: true });
-    cloneGhostOnStartObservers.set(destEl, observer);
+    entry.observer?.disconnect();
+    entry.observer = new MutationObserver(() =>
+      syncGhostFromPreview(ghost, preview),
+    );
+    entry.observer.observe(preview, { childList: true, subtree: true });
   });
 }
 
 function disconnectCloneGhostOnStartObservers(): void {
-  cloneGhostOnStartObservers.forEach((o) => o.disconnect());
-  cloneGhostOnStartObservers.clear();
+  cloneGhostOnStartRegistrations.forEach((entry) => {
+    entry.observer?.disconnect();
+    entry.observer = null;
+  });
 }
 
 // Non-global hooks only fire on sortables where `options[pluginName]` is set;

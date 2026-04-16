@@ -452,13 +452,13 @@ export function useDraggable<T>(...args: any[]): UseDraggableReturn {
       isDragOver,
       () => unref(options),
     );
-    const opts = unref(options);
-    if (opts?.cloneGhost && opts.cloneGhostOnStart) {
-      cloneGhostOnStartDispose = registerCloneGhostOnStart(
-        target as HTMLElement,
-        opts.cloneGhost,
-      );
-    }
+    cloneGhostOnStartDispose = registerCloneGhostOnStart(
+      target as HTMLElement,
+      () => {
+        const opts = unref(options);
+        return opts?.cloneGhostOnStart ? opts.cloneGhost : undefined;
+      },
+    );
   };
 
   watch(
