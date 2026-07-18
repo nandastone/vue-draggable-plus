@@ -42,19 +42,9 @@ export interface UseDraggableOptions<T> extends Options {
     immediate?: boolean;
     customUpdate?: (event: DraggableEvent<T>) => void;
     /**
-     * Factory for a destination-specific drag preview. When a cross-list drag
-     * from another sortable enters this one, the dragged element's innerHTML is
-     * replaced with the result of this factory so the user sees the element as
-     * it will look once dropped (e.g. a scene card for an app dropped into a
-     * playlist). The original innerHTML is restored when the drag leaves this
-     * sortable, ends, or cancels. Return `null` to leave the default in place.
-     */
-    cloneGhost?: () => HTMLElement | string | null;
-    /**
      * Hide the dragged element's placeholder while the cursor is outside this
-     * sortable's bounding rect. Pairs with `cloneGhost` for a symmetric feel:
-     * the destination preview appears on entry and disappears on leave, rather
-     * than lingering until drop.
+     * sortable's bounding rect, so it disappears on leave rather than lingering
+     * until drop.
      */
     hideOnLeave?: boolean;
     /**

@@ -1,158 +1,15 @@
 import Sortable from 'sortablejs';
 import { type Ref } from 'vue-demi';
 
-// SortableJS plugins that implement three drag UX concerns in a
+// SortableJS plugins that implement two drag UX concerns in a
 // framework-agnostic way, mounted once at module load. Consumers opt in per
-// sortable via options: `cloneGhost`, `hideOnLeave`. `BodyClass` and
-// `DragStateTracker` initialize by default and run on every drag.
+// sortable via the `hideOnLeave` option. `BodyClass` and `DragStateTracker`
+// initialize by default and run on every drag.
 
-interface PluginArgs {
-  sortable: Sortable;
-  isOwner?: boolean;
+// The element SortableJS is currently dragging. Shared by the plugins below.
+function getDraggedEl(): HTMLElement | null {
+  return (Sortable as unknown as { dragged: HTMLElement | null }).dragged;
 }
-
-// ---------------------------------------------------------------------------
-// CloneGhost
-//
-// Swaps `dragEl.innerHTML` with a destination-provided preview when a
-// cross-list drag enters a sortable that has `cloneGhost` configured. The
-// original markup is restored when the drag leaves (back to source or to
-// another destination), when SortableJS reverts dragEl to its origin, and
-// on drop/nulling.
-//
-// Cross-sortable behavior is driven by SortableJS's own event flow rather
-// than any shared module state: each sortable instance's `dragOverValid`
-// hook applies the ghost when its own sortable is the current drop target.
-// ---------------------------------------------------------------------------
-
-const CLONE_GHOST_ORIGINAL_HTML = Symbol('cloneGhostOriginalHtml');
-const CLONE_GHOST_ORIGINAL_WIDTH = Symbol('cloneGhostOriginalWidth');
-const CLONE_GHOST_ORIGINAL_HEIGHT = Symbol('cloneGhostOriginalHeight');
-const CLONE_GHOST_APPLIED_BY = Symbol('cloneGhostAppliedBy');
-
-type CloneGhostFactory = () => HTMLElement | string | null;
-
-type CloneGhostEl = HTMLElement & {
-  [CLONE_GHOST_ORIGINAL_HTML]?: string;
-  [CLONE_GHOST_ORIGINAL_WIDTH]?: string;
-  [CLONE_GHOST_ORIGINAL_HEIGHT]?: string;
-  [CLONE_GHOST_APPLIED_BY]?: HTMLElement;
-};
-
-function getDraggedEl(): CloneGhostEl | null {
-  return (Sortable as unknown as { dragged: HTMLElement | null })
-    .dragged as CloneGhostEl | null;
-}
-
-function getGhostEl(): CloneGhostEl | null {
-  return (Sortable as unknown as { ghost: HTMLElement | null })
-    .ghost as CloneGhostEl | null;
-}
-
-function restoreCloneGhost(el: CloneGhostEl | null): void {
-  if (!el || !el[CLONE_GHOST_APPLIED_BY]) return;
-  const html = el[CLONE_GHOST_ORIGINAL_HTML];
-  if (typeof html === 'string') el.innerHTML = html;
-  const width = el[CLONE_GHOST_ORIGINAL_WIDTH];
-  if (typeof width === 'string') el.style.width = width;
-  const height = el[CLONE_GHOST_ORIGINAL_HEIGHT];
-  if (typeof height === 'string') el.style.height = height;
-  el[CLONE_GHOST_ORIGINAL_HTML] = undefined;
-  el[CLONE_GHOST_ORIGINAL_WIDTH] = undefined;
-  el[CLONE_GHOST_ORIGINAL_HEIGHT] = undefined;
-  el[CLONE_GHOST_APPLIED_BY] = undefined;
-}
-
-function applyCloneGhost(
-  el: CloneGhostEl,
-  factory: CloneGhostFactory,
-  appliedBy: HTMLElement,
-): void {
-  const preview = factory();
-  if (!preview) return;
-  el[CLONE_GHOST_ORIGINAL_HTML] = el.innerHTML;
-  el[CLONE_GHOST_ORIGINAL_WIDTH] = el.style.width;
-  el[CLONE_GHOST_ORIGINAL_HEIGHT] = el.style.height;
-  el.innerHTML = typeof preview === 'string' ? preview : preview.innerHTML;
-  // Match the preview's measured box so the cursor-follower and placeholder
-  // morph to the destination's card dimensions instead of the source item's.
-  // Consumers that need a specific size should style the preview element at
-  // that size before returning it. String previews fall back to auto sizing.
-  if (preview instanceof HTMLElement) {
-    const rect = preview.getBoundingClientRect();
-    el.style.width = `${rect.width}px`;
-    el.style.height = `${rect.height}px`;
-  } else {
-    el.style.width = '';
-    el.style.height = '';
-  }
-  el[CLONE_GHOST_APPLIED_BY] = appliedBy;
-}
-
-function applyIfFresh(
-  el: CloneGhostEl | null,
-  factory: CloneGhostFactory,
-  appliedBy: HTMLElement,
-): void {
-  if (!el) return;
-  if (el[CLONE_GHOST_APPLIED_BY] === appliedBy) return;
-  if (el[CLONE_GHOST_APPLIED_BY]) restoreCloneGhost(el);
-  applyCloneGhost(el, factory, appliedBy);
-}
-
-function restoreAll(): void {
-  restoreCloneGhost(getDraggedEl());
-  restoreCloneGhost(getGhostEl());
-}
-
-// Non-global hooks only fire on sortables where `options[pluginName]` is set;
-// global hooks fire on every sortable the plugin is initialized on (all of
-// them, via `initializeByDefault`). The apply path uses non-global
-// `dragOverValid` because we only want to apply on destinations that have
-// `cloneGhost` configured. Every restore path uses a `Global` variant
-// because restores happen on the source sortable during events like drop,
-// nulling, revert, and dragOver-with-isOwner, none of which fire the
-// non-global variants on a source that doesn't declare `cloneGhost`.
-function CloneGhostPlugin(this: unknown) {}
-CloneGhostPlugin.prototype = {
-  dragOverValid(args: PluginArgs) {
-    if (args.isOwner) return;
-    const factory = (
-      args.sortable.options as { cloneGhost?: CloneGhostFactory }
-    ).cloneGhost;
-    if (!factory) return;
-    applyIfFresh(getDraggedEl(), factory, args.sortable.el);
-    applyIfFresh(getGhostEl(), factory, args.sortable.el);
-  },
-  dragOverGlobal(args: PluginArgs) {
-    if (!args.isOwner) return;
-    restoreAll();
-  },
-  // WORKAROUND (unpatched sortablejs): SortableJS ignores `put: false` on
-  // the revert-to-origin path (_onDragOver ~line 1748), so dragEl can be
-  // moved back into the source while cloneGhost and hideOnLeave state are
-  // still applied. This hook restores both before the DOM insert.
-  // Remove once SortableJS respects `put: false` on the owner revert branch.
-  // Upstream PR: https://github.com/SortableJS/Sortable/pull/2465
-  revertGlobal() {
-    const dragged = getDraggedEl();
-    restoreAll();
-    if (dragged && dragged.style.display === 'none') {
-      dragged.style.display = '';
-    }
-  },
-  dropGlobal() {
-    restoreAll();
-  },
-  nullingGlobal() {
-    restoreAll();
-  },
-};
-(CloneGhostPlugin as unknown as { pluginName: string }).pluginName =
-  'cloneGhost';
-(
-  CloneGhostPlugin as unknown as { initializeByDefault: boolean }
-).initializeByDefault = true;
 
 // ---------------------------------------------------------------------------
 // DragStateTracker
@@ -240,6 +97,18 @@ DragStateTrackerPlugin.prototype = {
   dragStartGlobal() {
     installDragStateListener();
   },
+  // WORKAROUND (unpatched sortablejs): SortableJS ignores `put: false` on the
+  // revert-to-origin path (_onDragOver ~line 1748), so dragEl can be moved back
+  // into the source while hideOnLeave's display:none is still applied. Clear it
+  // before the DOM insert so the reverted item isn't reinserted invisible.
+  // Remove once SortableJS respects `put: false` on the owner revert branch.
+  // Upstream PR: https://github.com/SortableJS/Sortable/pull/2465
+  revertGlobal() {
+    const dragged = getDraggedEl();
+    if (dragged && dragged.style.display === 'none') {
+      dragged.style.display = '';
+    }
+  },
   nullingGlobal() {
     removeDragStateListener();
     resetAllDragStateRefs();
@@ -285,17 +154,13 @@ BodyClassPlugin.prototype = {
 
 let mounted = false;
 
-// Mounts CloneGhost, DragStateTracker, and BodyClass on the shared Sortable
-// plugin registry. Idempotent; safe to call repeatedly. Called once from
+// Mounts DragStateTracker and BodyClass on the shared Sortable plugin
+// registry. Idempotent; safe to call repeatedly. Called once from
 // useDraggable's module initialization, via an explicit call rather than a
 // side-effect import so the module isn't tree-shaken under `sideEffects:
 // false`.
 export function mountDragPlugins(): void {
   if (mounted) return;
   mounted = true;
-  Sortable.mount(
-    CloneGhostPlugin as never,
-    DragStateTrackerPlugin as never,
-    BodyClassPlugin as never,
-  );
+  Sortable.mount(DragStateTrackerPlugin as never, BodyClassPlugin as never);
 }
